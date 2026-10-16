@@ -1,0 +1,78 @@
+# ============================================================
+# rl-vla-journey / .gitignore
+# 原则：产物不进版本库，源码才进
+# ============================================================
+
+# ---------- 训练产物（本仓库最大的一类） ----------
+# 注意写法：必须用 outputs/* 而不是 outputs/
+# 因为 git 不会进入被完全排除的目录，那样 !outputs/.gitkeep 这条否定规则就失效了
+outputs/*
+!outputs/.gitkeep
+
+# ---------- Python 运行时 ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ---------- 虚拟环境 ----------
+.venv/
+venv/
+env/
+ENV/
+
+# ---------- Jupyter ----------
+.ipynb_checkpoints/
+*.ipynb_checkpoints/
+
+# ---------- 模型权重与数据（体积大，且可重新生成/下载） ----------
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.h5
+*.pkl
+*.npz
+*.npy
+data/
+datasets/
+
+# ---------- 实验追踪工具的本地缓存 ----------
+wandb/
+runs/
+lightning_logs/
+*.tfevents.*
+events.out.tfevents.*
+
+# ---------- 日志 ----------
+*.log
+
+# ---------- 编辑器与系统 ----------
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+.Trash-*
+
+# ---------- 环境变量与密钥（永远不要提交） ----------
+.env
+.env.*
+*.key
+*.pem
+secrets.yaml
+
+# ---------- 临时文件 ----------
+*.tmp
+.tmp-*/
+*.bak
+*.orig
+*.rej
