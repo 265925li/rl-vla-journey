@@ -25,7 +25,8 @@ from pathlib import Path
 #   %(asctime)s   时间
 #   %(levelname)-7s  级别，左对齐占 7 格（这样各行能对齐）
 #   %(message)s   正文
-CONSOLE_FORMAT = "%(asctime)s | %(levelname)-7s | %(message)s"
+CONSOLE_FORMAT = "[主线版] %(asctime)s | %(message)s"
+
 CONSOLE_DATEFMT = "%H:%M:%S"
 
 # 文件：事后排查问题用的，所以多带两样定位信息
