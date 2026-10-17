@@ -78,7 +78,41 @@ cd "E:\work Buddy\强化学习"
 
 ---
 
-## 四、环境与硬件实况
+## 四、现在能跑什么
+
+P0 目前只到「工程地基」，**还没有训练逻辑**。可运行的两个入口：
+
+```powershell
+# 1) 环境探针：打印解释器、torch、CUDA、显卡、显存、算力等级
+& "E:\anaconda\envs\pytorch\python.exe" scripts\env_info.py
+#    → 结果写入 outputs/env_report.txt
+
+# 2) 训练入口（当前只有配置系统，训练逻辑待 W2 实现）
+& "E:\anaconda\envs\pytorch\python.exe" scripts\train.py --dry-run
+& "E:\anaconda\envs\pytorch\python.exe" scripts\train.py --dry-run --seed 42 --device cpu
+#    → 建 outputs/<时间戳>_train/，内含 config.yaml（生效配置备份）+ train.log
+```
+
+**配置的优先级：命令行 > `configs/default.yaml` > 代码里的默认值。**
+改参数不用改代码：
+
+```yaml
+# configs/default.yaml
+seed: 123
+device: cuda
+output_dir: outputs/exp_baseline
+log_level: DEBUG
+```
+
+`--seed 42` 只覆盖 `seed`，没传的键保留 yaml 里的值——
+在日志的「命令行覆盖」那一行能直接看到本次覆盖了什么。
+
+配置里的值会经过校验（`device` 只能是 `cpu`/`cuda`，`log_level` 只能是四个标准级别），
+**配错在读配置的那一刻就报错**，不会拖到训练第 1000 步才发现。
+
+---
+
+## 五、环境与硬件实况
 
 | 项目 | 规格 |
 |---|---|
@@ -103,7 +137,7 @@ Turing 上 `torch.cuda.is_bf16_supported()` 返回 `True` 是**软件模拟**，
 
 ---
 
-## 五、提交信息约定
+## 六、提交信息约定
 
 用前缀标明这次提交在干什么：
 
@@ -126,7 +160,7 @@ exp: PPO on HalfCheetah, 5 seeds, mean return 3120 +- 180
 
 ---
 
-## 六、进度
+## 七、进度
 
 详细的 26 周计划见 `../学习计划/`，P0 阶段的 21 天逐日清单见 `../学习计划/P0-逐日执行清单.md`。
 

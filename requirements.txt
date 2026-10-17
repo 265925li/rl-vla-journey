@@ -1,0 +1,44 @@
+# rl-vla-journey 依赖
+#
+# 原则：只列「本仓库 import 过的」包，间接依赖交给 pip 自动解析。
+# 不要用 `pip freeze > requirements.txt` 直接覆盖本文件 —— 那会带出 150+ 个
+# 间接包（torch 依赖的 sympy / networkx / filelock ...），把版本钉死反而害自己。
+#
+# 本机已验证通过的组合（2026-10-17，Windows + GTX 1660 Ti）：
+#   torch 2.13.0+cu126 · torchvision 0.28.0+cu126 · numpy 2.2.6
+#   gymnasium 1.4.0 · stable-baselines3 2.9.0 · mujoco 3.16.0
+#   tensorboard 2.21.0 · pyyaml 6.0.3 · scipy 1.15.3
+
+# ---- 深度学习 ----
+# torch 的 CUDA 版本要按自己机器选，不能靠 PyPI 默认。
+# 本机为 cu126，安装方式：
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+torch>=2.0
+torchvision>=0.15
+
+# ---- 数值与可视化 ----
+numpy>=1.24
+scipy>=1.10
+pandas>=2.0
+matplotlib>=3.7
+
+# ---- RL 环境 ----
+gymnasium>=1.0
+mujoco>=3.0
+# LunarLander 等经典控制环境需要
+# 注意包名是 Box2D（不是 box2d-py），import 的名字也是 Box2D
+Box2D>=2.3.10
+# 环境渲染窗口（pygame 的社区维护分支）
+pygame-ce>=2.5
+
+# ---- 算法 baseline ----
+# 只用来做对照，不用来替代手写实现（见 README 第一条纪律）
+stable-baselines3>=2.3
+
+# ---- 实验记录 ----
+tensorboard>=2.14
+wandb>=0.17
+
+# ---- 通用工具 ----
+pyyaml>=6.0
+tqdm>=4.66
