@@ -1,0 +1,4 @@
+seed: 123
+device: cuda
+output_dir: outputs/exp_baseline
+log_level: DEBUG
