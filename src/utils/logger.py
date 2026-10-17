@@ -25,7 +25,7 @@ from pathlib import Path
 #   %(asctime)s   时间
 #   %(levelname)-7s  级别，左对齐占 7 格（这样各行能对齐）
 #   %(message)s   正文
-CONSOLE_FORMAT = "[主线版] %(asctime)s | %(message)s"
+CONSOLE_FORMAT = "[合并版] %(asctime)s | %(levelname)-7s | %(message)s"
 
 CONSOLE_DATEFMT = "%H:%M:%S"
 
