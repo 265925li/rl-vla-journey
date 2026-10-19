@@ -82,3 +82,9 @@ secrets.yaml
 # 需要保留某个的话，就把它改成正式文件名（去掉 play_ 前缀）。
 scripts/play_*.py
 scripts/_probe*.py
+# 根目录下的临时练手脚本（PyCharm 里右键新建的默认名常是 1.py / 2.py）
+/1.py
+/2.py
+/3.py
+/play_*.py
+/_probe*.py
