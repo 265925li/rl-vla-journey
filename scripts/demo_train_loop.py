@@ -97,6 +97,10 @@ class BlobsDataset(Dataset):
                 return tuple(t[i] for t in self.tensors)
     今天先自己写一遍（知道它有多简单），再用官方的（它带类型标注和边界检查）。
     """
+    def __len__(self) ->int:
+        return self.X.shape[0]
+    def __getitem__(self,i:int) ->tuple[torch.Tensor,torch.Tensor]:
+        return self.X[i],self.y[i]
 
     def __init__(self, X: torch.Tensor, y: torch.Tensor) -> None:
         if X.shape[0] != y.shape[0]:
@@ -104,14 +108,6 @@ class BlobsDataset(Dataset):
         self.X = X
         self.y = y
 
-    def __len__(self) -> int:
-        raise AssertionError("TODO 1a 未完成：__len__ 要返回样本总数（看 X 的第 0 维）")
-
-    def __getitem__(self, i: int) -> tuple[torch.Tensor, torch.Tensor]:
-        raise AssertionError(
-            "TODO 1b 未完成：__getitem__ 要返回第 i 条样本 (X[i], y[i])\n"
-            "  注意 X[i] 的形状是 (2,)，y[i] 是 0 维标量 —— 不是 (1,2) / (1,)"
-        )
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -139,10 +135,8 @@ def build_loader(
     B 通常等于 batch_size，但**最后一个 batch 可能更小**（除非 drop_last=True）。
     """
     ds = TensorDataset(X, y)  # 已给：Dataset 这一层有了
-    raise AssertionError(
-        "TODO 2 未完成：把 ds 交给 DataLoader，参数是 batch_size / shuffle / generator\n"
-        "  generator 用 torch.Generator().manual_seed(seed) —— 不传的话每 epoch 打乱顺序都不同"
-    )
+    return DataLoader(ds, batch_size=batch_size, shuffle=shuffle,
+                      generator=torch.Generator().manual_seed(seed))
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -168,11 +162,14 @@ def train_step(
     返回值是 (float, int) 而不是 (tensor, int) —— 记住 loss 要 .item()，
     否则调用方把它累加起来时，整张计算图会被一直拎着不放（内存只涨不降）。
     """
-    raise AssertionError(
-        "TODO 3 未完成：把上面那五个动作按顺序写出来，然后返回 (loss 的 float, 猜对的条数)\n"
-        "  猜对的条数 = (logits.argmax(dim=1) == yb).sum().item()\n"
-        "  别忘了把 xb / yb 搬到 device 上"
-    )
+    xb,yb = xb.to(device),yb.to(device)
+    optimizer.zero_grad()
+    logits = model(xb)
+    loss = criterion(logits,yb)
+    loss.backward()
+    optimizer.step()
+    correct = (logits.argmax(dim = 1) == yb).sum().item()
+    return loss.item(),correct
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -195,11 +192,21 @@ def evaluate(
     因为最后一个 batch 可能不满（2400 条 / bs=64 → 最后一个只有 32 条）。
     直接对 batch loss 求平均，等于给了小 batch 过高的权重。
     """
-    raise AssertionError(
-        "TODO 4 未完成：eval 模式下遍历 loader，累计 loss 和猜对的条数\n"
-        "  累计 loss 要乘上本 batch 的实际条数（xb.shape[0]），最后除以总条数\n"
-        "  返回 (loss / n, 猜对的总数 / n)"
-    )
+    model.eval()
+    total_loss, total_correct, n = 0.0, 0, 0
+
+    with torch.no_grad():
+        for xb, yb in loader:
+            xb, yb = xb.to(device), yb.to(device)
+            logits = model(xb)
+            loss = criterion(logits, yb)
+
+            bs = xb.shape[0]
+            total_loss += loss.item() * bs
+            total_correct += (logits.argmax(dim=1) == yb).sum().item()
+            n += bs
+
+    return total_loss / n, total_correct / n
 
 
 # ═══════════════════════════════════════════════════════════════════
