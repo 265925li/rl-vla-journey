@@ -1,0 +1,25 @@
+# Day 13 · 对照实验：只把 hidden 从 256 改成 512
+#
+# 除 hidden 外，每个字段都和 mnist_mlp.yaml 完全一致。
+# 一次只改一个变量，才能把差别归因到那个变量上。
+
+seed: 0
+device: cuda
+
+# ── 数据 ──
+data_dir: data
+batch_size: 128
+val_size: 6000
+num_workers: 0
+
+# ── 模型：784 -> 512 -> 10（唯一改动） ──
+hidden: 512
+n_layers: 2
+act: relu
+
+# ── 优化 ──
+optimizer: sgd
+lr: 0.1
+momentum: 0.9
+epochs: 10
+scheduler: none
