@@ -30,6 +30,11 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 ALLOWED_DEVICES = ("cpu", "cuda")
 ALLOWED_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
 
+# Day 13 新增：训练相关枚举。同样写死在这里，别散落到训练脚本里
+ALLOWED_OPTIMIZERS = ("sgd", "adam", "mysgd")   # mysgd = Day 12 手写的那个
+ALLOWED_SCHEDULERS = ("none", "step")
+ALLOWED_ACTS = ("relu", "tanh", "gelu")
+
 
 # ═══════════════════════════════════════════════════════════════════
 # 1. 配置的形状
@@ -46,6 +51,27 @@ class Config:
     device: str = "cuda"
     output_dir: str = "outputs"
     log_level: str = "INFO"
+
+    # ── Day 13 新增：数据 ──────────────────────────────────────────
+    data_dir: str = "data"          # MNIST 存在哪（相对项目根）
+    batch_size: int = 128           # 每批多少条
+    val_size: int = 6000            # 从 60000 里切多少条当验证集
+    num_workers: int = 0            # 读数据的子进程数（Windows 上先留 0）
+
+    # ── Day 13 新增：模型 ──────────────────────────────────────────
+    hidden: int = 256               # 隐藏层宽度
+    n_layers: int = 2               # 总层数（含输出层）
+    act: str = "relu"               # 激活函数：relu / tanh / gelu
+
+    # ── Day 13 新增：优化 ──────────────────────────────────────────
+    optimizer: str = "sgd"          # sgd / adam / mysgd（自己手写的那个）
+    lr: float = 0.1
+    momentum: float = 0.9
+    weight_decay: float = 0.0
+    epochs: int = 10
+    scheduler: str = "none"         # none / step
+    step_size: int = 4              # 每几轮把 lr 乘一次 gamma
+    gamma: float = 0.5
 
     def __post_init__(self) -> None:
         """字段赋值完成后自动调用 —— 校验的天然位置。
@@ -64,6 +90,31 @@ class Config:
             raise ValueError(
                 f"log_level 只能是 {ALLOWED_LOG_LEVELS} 之一，你给的是 {self.log_level!r}"
             )
+
+        # ── Day 13 新增的校验 ──────────────────────────────────────
+        # 配错一个字符串，如果拖到训练第 10 分钟才炸，那 10 分钟就白跑了。
+        if self.optimizer not in ALLOWED_OPTIMIZERS:
+            raise ValueError(
+                f"optimizer 只能是 {ALLOWED_OPTIMIZERS} 之一，你给的是 {self.optimizer!r}"
+            )
+
+        if self.scheduler not in ALLOWED_SCHEDULERS:
+            raise ValueError(
+                f"scheduler 只能是 {ALLOWED_SCHEDULERS} 之一，你给的是 {self.scheduler!r}"
+            )
+
+        if self.act not in ALLOWED_ACTS:
+            raise ValueError(f"act 只能是 {ALLOWED_ACTS} 之一，你给的是 {self.act!r}")
+
+        # 范围检查：数值型的错（batch_size=0、lr 是负数）也会一路错到训练中期
+        if self.batch_size < 1:
+            raise ValueError(f"batch_size 必须 >= 1，你给的是 {self.batch_size}")
+        if self.epochs < 1:
+            raise ValueError(f"epochs 必须 >= 1，你给的是 {self.epochs}")
+        if self.lr <= 0:
+            raise ValueError(f"lr 必须 > 0，你给的是 {self.lr}")
+        if not 0 <= self.val_size < 60000:
+            raise ValueError(f"val_size 要在 [0, 60000) 内，你给的是 {self.val_size}")
         # ─────────────────────────────────────────────────────────────
 
 

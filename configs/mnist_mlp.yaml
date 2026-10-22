@@ -1,0 +1,25 @@
+# Day 13 · MNIST + MLP 第一版
+#
+# 只写「和默认值不一样」或「你想强调」的字段，没写的自动用 Config 里的默认值。
+# 这样配置文件本身就能当"这次实验到底改了什么"的记录。
+
+seed: 0
+device: cuda
+
+# ── 数据 ──
+data_dir: data
+batch_size: 128
+val_size: 6000      # 从 60000 训练集里切 6000 当验证集
+num_workers: 0      # Windows 上先用 0
+
+# ── 模型：784 -> 256 -> 10 ──
+hidden: 256
+n_layers: 2
+act: relu
+
+# ── 优化 ──
+optimizer: sgd      # sgd / adam / mysgd
+lr: 0.1
+momentum: 0.9
+epochs: 10
+scheduler: none
