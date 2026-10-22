@@ -5,13 +5,37 @@
     & "E:\\anaconda\\envs\\pytorch\\python.exe" src\\utils\\optim.py
     & "E:\\anaconda\\envs\\pytorch\\python.exe" src\\utils\\optim.py --train
 
-四关，按顺序报错。每填完一处就重跑一次，看下一个报什么。
+────────────────────────────────────────────────────────────────
+填空规则（只有两条）
 
-    TODO 1  MySGD.step()    —— plain / momentum / dampening / weight_decay / nesterov
-    TODO 2  MyAdam.step()   —— 一阶矩 + 二阶矩 + 偏差校正
-    TODO 3  MyStepLR.step() —— 每 step_size 步把 lr 乘 gamma
+  1. 找到带 TODO 的那一行，把占位内容换成真正的表达式
+  2. 如果它下面紧跟一个 assert，删掉那行 assert（它只是报警器）
 
-    第 4 关（--train）是训练轨迹对拍，不用填；前三关全过才会跑到。
+占位有三种长相：
+      g = None                 需要赋值的 → 用 None 占位
+      assert g is not None     紧跟其后，填完就删
+      raise AssertionError(…)  纯语句位置（没有赋值）→ 整段 raise 删掉，换成你的代码
+────────────────────────────────────────────────────────────────
+报错顺序不是按编号排的，这很正常
+
+  第一次跑 → ⑤    关 1 用默认参数，①②③④ 那些 if 分支根本不执行
+  填完 ⑤   → ②    关 2 打开 momentum，首步要 clone
+  填完 ②   → ③    第 2 步起走缓冲累加
+  填完 ③   → ①    关 2 第 3 组打开 weight_decay
+  填完 ①   → ④    关 2 第 4 组打开 nesterov
+  填完 ④   → 关 2 全过，进入 2-①
+
+  所以「一上来报 ⑤ 而不是 ①」不是你的错，是分支没被执行。
+────────────────────────────────────────────────────────────────
+四个原地操作（PyTorch 特有，数学里没有对应符号）
+
+  x.add_(y)                  等价于  x = x + y          ← 下划线表示「改自己」
+  x.mul_(k)                  等价于  x = x * k
+  x.add_(y, alpha=k)         等价于  x = x + k * y
+  x.addcmul_(a, b, value=k)  等价于  x = x + k * a * b
+
+  为什么必须用带下划线的？因为 `p.data -= …` 改的是模型里那个张量本身；
+  写成 `p = p - …` 只是让局部变量 p 指向一个新张量，模型参数根本没动（讲义 §7）。
 
 对拍判据：max |手写 - torch| < 1e-6 就算一致。
 """
@@ -71,19 +95,56 @@ class MySGD:
             p.grad = None
 
     def step(self) -> None:
-        raise AssertionError(
-            "TODO 1 未完成：MySGD.step() 要按下面四步更新每个参数\n"
-            "  遍历 self.params（用 enumerate，因为要拿下标 i 去查 self.buf[i]）：\n"
-            "    0) 跳过 p.grad is None 的参数\n"
-            "    1) g = p.grad；若 self.weight_decay: g = g + self.weight_decay * p\n"
-            "    2) 若 self.momentum:\n"
-            "         self.buf[i] is None → self.buf[i] = g.clone()      # 首步直接拷贝\n"
-            "         否则              → self.buf[i].mul_(self.momentum).add_(g, alpha=1 - self.dampening)\n"
-            "         方向 = self.buf[i]\n"
-            "         若 self.nesterov: 方向 = g + self.momentum * self.buf[i]\n"
-            "       否则 方向 = g\n"
-            "    3) p.data -= self.lr * 方向"
-        )
+        for i, p in enumerate(self.params):
+            if p.grad is None:
+                continue
+
+            # ① L2 正则：先把 weight_decay * p 加到梯度上
+            #    数学：g = p.grad + weight_decay × p
+            g = p.grad
+            if self.weight_decay:
+                g = None
+                assert g is not None, (
+                    "TODO 1-① 未完成（weight_decay）\n"
+                    "  一行：g = g + self.weight_decay * p"
+                )
+
+            # ② 有 momentum 时，方向不再等于梯度，而是一个会累积的缓冲 buf
+            if self.momentum:
+                if self.buf[i] is None:
+                    # 首步：把这次梯度直接拷进去（不是从 0 累加）
+                    self.buf[i] = None
+                    assert self.buf[i] is not None, (
+                        "TODO 1-② 未完成（momentum 首步）\n"
+                        "  self.buf[i] = g.clone()\n"
+                        "  ⚠ clone 不能省：不加的话 buf 和 grad 是同一个张量，后面 mul_ 会把梯度也改掉"
+                    )
+                else:
+                    # ③ 缓冲滚动：buf = momentum × buf + (1 - dampening) × g
+                    raise AssertionError(
+                        "TODO 1-③ 未完成（缓冲滚动）\n"
+                        "  把这两步合成一行：\n"
+                        "    self.buf[i].mul_(self.momentum)                     # buf 先乘 momentum\n"
+                        "    self.buf[i].add_(g, alpha=1 - self.dampening)       # 再加 (1-dampening)×g"
+                    )
+                direction = self.buf[i]
+
+                # ④ nesterov：方向改成「当前梯度 + momentum × 缓冲」
+                if self.nesterov:
+                    direction = None
+                    assert direction is not None, (
+                        "TODO 1-④ 未完成（nesterov）\n"
+                        "  direction = g + self.momentum * self.buf[i]"
+                    )
+            else:
+                direction = g
+
+            # ⑤ 更新参数：p = p - lr × 方向
+            raise AssertionError(
+                "TODO 1-⑤ 未完成（更新参数）\n"
+                "  p.data -= self.lr * direction\n"
+                "  ⚠ 必须是 p.data -=，写成 p = p - ... 模型里的参数不会变"
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -118,16 +179,50 @@ class MyAdam:
             p.grad = None
 
     def step(self) -> None:
-        raise AssertionError(
-            "TODO 2 未完成：MyAdam.step()\n"
-            "  函数开头先 self.t += 1（全局步数，偏差校正要用）\n"
-            "  然后遍历 self.params（enumerate 拿 i），跳过 grad is None 的：\n"
-            "    1) self.m[i].mul_(self.b1).add_(g, alpha=1 - self.b1)          # 一阶矩\n"
-            "    2) self.v[i].mul_(self.b2).addcmul_(g, g, value=1 - self.b2)    # 二阶矩\n"
-            "    3) m_hat = self.m[i] / (1 - self.b1 ** self.t)\n"
-            "       v_hat = self.v[i] / (1 - self.b2 ** self.t)                  # 偏差校正\n"
-            "    4) p.data -= self.lr * m_hat / (v_hat.sqrt() + self.eps)"
-        )
+        # 全局步数，偏差校正要用。漏了这行 → 1 - 0.9**0 = 0 → 除零 → 参数变 nan
+        self.t += 1
+
+        for i, p in enumerate(self.params):
+            if p.grad is None:
+                continue
+            g = p.grad
+
+            # ① 一阶矩：m 是梯度的滑动平均，就是"惯性"
+            #    数学：m = b1 × m + (1 - b1) × g
+            raise AssertionError(
+                "TODO 2-① 未完成（一阶矩 m）\n"
+                "  合成一行：self.m[i].mul_(self.b1).add_(g, alpha=1 - self.b1)\n"
+                "  拆开看：   m 先乘 b1  →  再加 (1-b1)×g"
+            )
+
+            # ② 二阶矩：v 是「梯度平方」的滑动平均，用来衡量梯度有多大
+            #    数学：v = b2 × v + (1 - b2) × g²
+            #    torch 的 addcmul_(a, b, value=k) = 加 k×a×b，所以传两个 g 就是 g*g
+            raise AssertionError(
+                "TODO 2-② 未完成（二阶矩 v）\n"
+                "  self.v[i].mul_(self.b2).addcmul_(g, g, value=1 - self.b2)\n"
+                "  为什么传两次 g：addcmul_ 算 a*b，传两次就是 g×g"
+            )
+
+            # ③④ 偏差校正：m 和 v 都从 0 起步，前几步天然偏小，要除掉
+            #     数学：m_hat = m / (1 - b1^t)，v_hat = v / (1 - b2^t)
+            m_hat = None
+            assert m_hat is not None, (
+                "TODO 2-③ 未完成（m 的偏差校正）\n"
+                "  m_hat = self.m[i] / (1 - self.b1 ** self.t)"
+            )
+            v_hat = None
+            assert v_hat is not None, (
+                "TODO 2-④ 未完成（v 的偏差校正）\n"
+                "  v_hat = self.v[i] / (1 - self.b2 ** self.t)"
+            )
+
+            # ⑤ 更新：p = p - lr × m_hat / (sqrt(v_hat) + eps)
+            #    除 sqrt(v_hat) 就是 Adam 的核心：把梯度的大小约掉，只留方向
+            raise AssertionError(
+                "TODO 2-⑤ 未完成（更新参数）\n"
+                "  p.data -= self.lr * m_hat / (v_hat.sqrt() + self.eps)"
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -148,11 +243,13 @@ class MyStepLR:
         self.last_epoch = 0
 
     def step(self) -> None:
-        raise AssertionError(
-            "TODO 3 未完成：MyStepLR.step()\n"
-            "  1) self.last_epoch += 1\n"
-            "  2) 若 self.last_epoch % self.step_size == 0: self.opt.lr *= self.gamma"
-        )
+        self.last_epoch += 1
+        if self.last_epoch % self.step_size == 0:
+            raise AssertionError(
+                "TODO 3 未完成（lr 衰减）\n"
+                "  self.opt.lr *= self.gamma\n"
+                "  第 5、10、15… 步各乘一次 → 0.1, 0.05, 0.025 …"
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════
