@@ -30,7 +30,11 @@ ENV/
 .ipynb_checkpoints/
 *.ipynb_checkpoints/
 
-# ---------- 模型权重与数据（体积大，且可重新生成/下载） ----------
+# 模型权重与数据（体积大，且可重新生成/下载）
+# ⚠️ 这里的 / 不能省：
+#     data/      → 匹配**任意层级**的 data 目录，包括 src/data/ ← 会吞掉源码！
+#     /data/     → 只匹配项目根目录下的 data/
+# 这个坑很隐蔽：文件不会报错，只是怎么 add 都加不进去
 *.pt
 *.pth
 *.ckpt
@@ -40,8 +44,8 @@ ENV/
 *.pkl
 *.npz
 *.npy
-data/
-datasets/
+/data/
+/datasets/
 
 # ---------- 实验追踪工具的本地缓存 ----------
 wandb/
