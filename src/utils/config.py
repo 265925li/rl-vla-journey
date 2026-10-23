@@ -34,6 +34,8 @@ ALLOWED_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
 ALLOWED_OPTIMIZERS = ("sgd", "adam", "mysgd")   # mysgd = Day 12 手写的那个
 ALLOWED_SCHEDULERS = ("none", "step")
 ALLOWED_ACTS = ("relu", "tanh", "gelu")
+# Day 16 新增：损失函数。myce = 手写 softmax+CE（src/utils/losses.py）
+ALLOWED_LOSSES = ("ce", "myce")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -66,6 +68,12 @@ class Config:
     # ── Day 15 新增：正则化 ────────────────────────────────────────
     dropout: float = 0.0            # 丢弃概率（0 = 不加，Day 13 就是 0）
     early_stop_patience: int = 0    # 验证 loss 连续几轮不降就停（0 = 不停）
+
+    # ── Day 16 新增：损失函数 ──────────────────────────────────────
+    # ce   = nn.CrossEntropyLoss（PyTorch 官方实现）
+    # myce = 手写 softmax + 交叉熵（src/utils/losses.py，七关对拍通过）
+    # 两者数值上逐位一致，切它只是为了证明"你真的会自己写"
+    loss: str = "ce"
 
     # ── Day 13 新增：优化 ──────────────────────────────────────────
     optimizer: str = "sgd"          # sgd / adam / mysgd（自己手写的那个）
@@ -109,6 +117,12 @@ class Config:
 
         if self.act not in ALLOWED_ACTS:
             raise ValueError(f"act 只能是 {ALLOWED_ACTS} 之一，你给的是 {self.act!r}")
+
+        # ── Day 16 新增的校验 ──────────────────────────────────────
+        if self.loss not in ALLOWED_LOSSES:
+            raise ValueError(
+                f"loss 只能是 {ALLOWED_LOSSES} 之一（myce = 手写版），你给的是 {self.loss!r}"
+            )
 
         # 范围检查：数值型的错（batch_size=0、lr 是负数）也会一路错到训练中期
         if self.batch_size < 1:

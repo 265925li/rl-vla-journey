@@ -50,6 +50,7 @@ from src.data.mnist import build_loaders
 from src.models.mlp import MLP, count_params_manual
 from src.utils.config import load_config, save_config
 from src.utils.logger import get_logger
+from src.utils.losses import MyCrossEntropy
 from src.utils.optim import MySGD, MyStepLR
 from src.utils.paths import CONFIGS, run_dir
 from src.utils.seed import set_seed
@@ -118,6 +119,26 @@ def build_optimizer(cfg, model) -> torch.optim.Optimizer:
         momentum=cfg.momentum,
         weight_decay=cfg.weight_decay,
     )
+
+
+def build_criterion(cfg) -> nn.Module:
+    """按配置造损失函数。两个选项的接口完全一样：crit(logits, target) -> 标量。
+
+    Day 16 新增。myce 是 src/utils/losses.py 里手写的 softmax + 交叉熵，
+    它的 forward 和 backward 都自己写，已经过七关对拍（前向数值、反向梯度、
+    数值稳定性、gradcheck、链式法则、retain_graph 幂等、真模型训练轨迹）。
+
+    为什么能直接替换：因为它和 nn.CrossEntropyLoss 一样，是个 nn.Module，
+    参数签名一样（logits, target），返回一样（0 维标量）。
+    **接口一致，所以调用方一行都不用改** —— 这跟 Day 12 的 mysgd 是同一个道理。
+
+    ⚠️ 一个必须记住的前提：**模型的最后一层不要接 softmax。**
+    交叉熵内部已经做了 log_softmax。多套一层 softmax 不会报错，
+    只会让 loss 卡在 ln3 ≈ 1.0986 附近再也降不下去（Day 12 讲过）。
+    """
+    if cfg.loss == "myce":
+        return MyCrossEntropy()
+    return nn.CrossEntropyLoss()
 
 
 def build_scheduler(cfg, opt):
@@ -279,6 +300,11 @@ def parse_args():
         "--es-metric", type=str, default="loss", choices=["loss", "acc"],
         help="早停看哪个指标。默认 loss（连续、灵敏）；选 acc 会看到相反的结论",
     )
+    # ── Day 16 新增：换成手写的损失函数 ────────────────────────────
+    ap.add_argument(
+        "--loss", type=str, default=None, choices=["ce", "myce"],
+        help="ce = nn.CrossEntropyLoss，myce = Day 16 手写版（数值上一致）",
+    )
     ap.add_argument("--tag", type=str, default="run", help="输出目录后缀，方便区分多次实验")
     return ap.parse_args()
 
@@ -300,6 +326,7 @@ def main() -> None:
             "dropout": args.dropout,
             "weight_decay": args.weight_decay,
             "early_stop_patience": args.patience,
+            "loss": args.loss,
         }.items()
         if v is not None
     }
@@ -344,12 +371,13 @@ def main() -> None:
     # 两种算法算同一个数，对不上说明模型结构和你想的不一样
     assert actual == manual, f"参数量对不上：运行时 {actual} vs 手算 {manual}"
 
-    crit = nn.CrossEntropyLoss()
+    crit = build_criterion(cfg)
     opt = build_optimizer(cfg, model)
     sched = build_scheduler(cfg, opt)
     log.info(f"优化器 {cfg.optimizer}  lr={cfg.lr}  "
              f"momentum={cfg.momentum}  scheduler={cfg.scheduler}  "
              f"weight_decay={cfg.weight_decay}")
+    log.info(f"损失函数 {cfg.loss}  →  {type(crit).__name__}")
     log.info(f"正则化 dropout={cfg.dropout}  "
              f"early_stop_patience={cfg.early_stop_patience}  判据={args.es_metric}")
 
