@@ -164,6 +164,26 @@ def load_config(path: Path, overrides: dict | None = None) -> Config:
 
 
     cfg = Config(**{k: v for k, v in raw.items() if k in known})
+
+    # ── 把「相对路径」按项目根解析成绝对路径 ──────────────────────
+    # 【为什么必须在这里做】
+    # yaml 里写的是 data_dir: "data"，这是个相对路径。相对路径是相对于
+    # **当前工作目录（cwd）** 解析的，而 cwd 取决于你在哪个目录敲的命令：
+    #
+    #     在项目根跑   → <项目根>/data/          ✅
+    #     在 scripts/ 跑 → <项目根>/scripts/data/  ❌ 又下了一份 64 MB
+    #
+    # 这个坑真的踩过：Day 13 跑完发现 scripts/data/MNIST 多出一份，
+    # 磁盘上同一份数据存了两个地方。Day 2 写 paths.py 的目的就是
+    # 「不依赖 cwd」，结果 config 这里又退回了相对路径 —— 现在补上。
+    #
+    # 一律转成 str，因为 dataclass 里声明的类型是 str，读代码的人
+    # 不该遇到「有时是 str 有时是 Path」的惊喜。
+    for name in ("data_dir", "output_dir"):
+        p = Path(getattr(cfg, name))
+        if not p.is_absolute():
+            setattr(cfg, name, str(ROOT / p))
+
     return cfg
 
 
