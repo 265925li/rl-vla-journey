@@ -34,6 +34,14 @@ class MLP(nn.Module):
 
     in_dim -> hidden -> hidden -> ... -> out_dim
                └──── n_layers-1 个 hidden 层 ────┘  └─ 输出层 ─┘
+
+    ── Day 15 新增 dropout 参数 ──────────────────────────────────────
+    每个 hidden 单元变成  Linear → 激活 → Dropout
+
+    dropout 是「丢弃概率」不是「保留概率」：
+        dropout=0.0  不丢（等价于没加，Day 13 用的就是这个）
+        dropout=0.2  每次前向随机把 20% 的神经元输出置 0
+        dropout=0.5  丢一半（老论文里常用，对 MLP 已经很猛了）
     """
 
     def __init__(
@@ -43,26 +51,43 @@ class MLP(nn.Module):
         out_dim: int,
         n_layers: int,
         act: str = "relu",
+        dropout: float = 0.0,
     ) -> None:
         super().__init__()
         if n_layers < 2:
             raise ValueError(f"n_layers 至少要 2（一个 hidden + 一个输出），收到 {n_layers}")
         if act not in ACT_MAP:
             raise ValueError(f"act 只能是 {list(ACT_MAP)}，收到 {act!r}")
+        # Day 15 新增：概率必须落在 [0, 1) 里。
+        # 写 1.0 会让所有神经元永远被丢光（模型输出恒为 0），这个错不报错、
+        # 只是训练完全不动 —— 属于"静默失败"，所以在入口就拦掉。
+        if not 0.0 <= dropout < 1.0:
+            raise ValueError(f"dropout 要在 [0, 1) 内，收到 {dropout}")
 
         self.in_dim = in_dim
         self.hidden = hidden
         self.out_dim = out_dim
         self.n_layers = n_layers
         self.act_name = act
+        self.dropout_p = dropout
 
         act_cls = ACT_MAP[act]
-        # 前 n_layers-1 层：Linear + 激活；最后 1 层：Linear，不接激活
+        # 前 n_layers-1 层：Linear + 激活 (+ Dropout)；最后 1 层：Linear，不接激活
         layers: list[nn.Module] = []
         last = in_dim
         for _ in range(n_layers - 1):
             layers.append(nn.Linear(last, hidden))
             layers.append(act_cls())
+            # ── 顺序：Linear → 激活 → Dropout ─────────────────────
+            # 为什么不是 Linear → Dropout → 激活？
+            # 两者数学上都成立，但惯例是「丢已经激活过的输出」。原因是
+            # ReLU 之后的 0 本来就是死的，再丢它等于没丢（白丢），
+            # 丢在 ReLU 前面才等价于「相当于没这个神经元」。
+            # 这个顺序差异在实践中影响很小，但面试会问，值得记一下。
+            if dropout > 0:
+                # nn.Dropout 是**无参数**的层 —— 不占参数量，只改前向行为。
+                # 所以 count_params_manual() 一个字都不用改。
+                layers.append(nn.Dropout(dropout))
             last = hidden
         layers.append(nn.Linear(last, out_dim))
 

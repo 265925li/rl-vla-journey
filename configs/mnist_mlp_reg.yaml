@@ -1,0 +1,33 @@
+# Day 15 · 正则化配置：dropout + weight decay + 早停
+#
+# 和 mnist_mlp.yaml 的差别只有正则化那几行，其它一个字都没动。
+# 这样跑出来的差别才能归因到"正则化"上，而不是别的东西。
+#
+# 跑法：
+#   & "E:\anaconda\envs\pytorch\python.exe" scripts\train_mnist.py --config configs\mnist_mlp_reg.yaml --tag reg
+
+seed: 0
+device: cuda
+
+# ── 数据 ──
+data_dir: data
+batch_size: 128
+val_size: 6000
+num_workers: 0
+
+# ── 模型：784 -> 256 -> 10 ──
+hidden: 256
+n_layers: 2
+act: relu
+
+# ── 优化 ──
+optimizer: sgd
+lr: 0.1
+momentum: 0.9
+epochs: 10
+scheduler: none
+
+# ── 正则化（Day 15 新增） ──
+dropout: 0.2
+weight_decay: 0.0005      # 5e-4。yaml 里不认 5e-4 这种写法吗？认，但写成小数更保险
+early_stop_patience: 3    # val_loss 连续 3 轮不降就停

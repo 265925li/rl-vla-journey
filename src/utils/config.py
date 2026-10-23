@@ -63,6 +63,10 @@ class Config:
     n_layers: int = 2               # 总层数（含输出层）
     act: str = "relu"               # 激活函数：relu / tanh / gelu
 
+    # ── Day 15 新增：正则化 ────────────────────────────────────────
+    dropout: float = 0.0            # 丢弃概率（0 = 不加，Day 13 就是 0）
+    early_stop_patience: int = 0    # 验证 loss 连续几轮不降就停（0 = 不停）
+
     # ── Day 13 新增：优化 ──────────────────────────────────────────
     optimizer: str = "sgd"          # sgd / adam / mysgd（自己手写的那个）
     lr: float = 0.1
@@ -115,6 +119,19 @@ class Config:
             raise ValueError(f"lr 必须 > 0，你给的是 {self.lr}")
         if not 0 <= self.val_size < 60000:
             raise ValueError(f"val_size 要在 [0, 60000) 内，你给的是 {self.val_size}")
+
+        # ── Day 15 新增：正则化参数 ────────────────────────────────
+        # dropout 写 1.0 → 神经元全被丢光，模型恒输出 0，训练完全不动，
+        # 但**不报错**。这种"静默失效"必须靠在入口校验来挡。
+        if not 0.0 <= self.dropout < 1.0:
+            raise ValueError(f"dropout 要在 [0, 1) 内，你给的是 {self.dropout}")
+        if self.weight_decay < 0:
+            raise ValueError(f"weight_decay 不能为负，你给的是 {self.weight_decay}")
+        if self.early_stop_patience < 0:
+            raise ValueError(
+                f"early_stop_patience 不能为负（0 表示关闭），你给的是 {self.early_stop_patience}"
+            )
+        # ─────────────────────────────────────────────────────────────
         # ─────────────────────────────────────────────────────────────
 
 
