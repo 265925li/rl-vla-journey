@@ -665,7 +665,9 @@ def main() -> int:
     print(f"\n  {n_pass}/{len(results)} 关通过")
 
     if n_pass == len(results):
-        print("\n  手写版与 PyTorch 内部实现逐位一致 —— 可以把它当成自己写的损失函数用了。")
+        print("\n  七关全过：单步的前向与反向都与 PyTorch 一致（1e-7 级）。")
+        print("  ⚠️ 这是「单步一致」，不是「训练结果完全一样」——")
+        print("     多步训练会因浮点误差累积而分叉，实测见讲义 §7。")
         return 0
     print("\n  有未通过的关，别往下走：先修好再进入 Day 17。")
     return 1
