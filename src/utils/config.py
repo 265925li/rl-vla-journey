@@ -38,6 +38,19 @@ ALLOWED_ACTS = ("relu", "tanh", "gelu")
 ALLOWED_LOSSES = ("ce", "myce")
 # Day 17 新增：线性层。my = 手写 MyLinear（src/utils/layers.py）
 ALLOWED_LINEARS = ("torch", "my")
+# Day 18 新增：早停判据。两种判据在实测里给出**相反**的结论（Day 15），
+# 所以要能选，而且选了哪个必须记进 config.yaml
+ALLOWED_ES_METRICS = ("loss", "acc")
+
+# ⚠️ 注意这里**没有** ALLOWED_MODELS / ALLOWED_DATASETS。
+# 那两张表在 src/engine/registry.py 里，由 builtin.py 注册填充。
+# 如果在这里写死 ("mlp", "cnn", ...)，那么 P1 加 CNN 时就要改 config.py ——
+# 而 config 是"所有实验都依赖"的文件，改它的风险最高。
+# 现在这样：加模型只动 builtin.py 一个文件，config 完全不知道有哪些模型。
+#
+# 代价是「模型名拼错」不会在读配置那一刻报错，而是在 Trainer.build() 里报。
+# 这个代价可以接受，因为：(1) 它仍在训练的第一秒内，不是第 1000 步；
+# (2) registry 的报错信息带「已注册的有 [...]」，比这里能给的更有用。
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -56,6 +69,18 @@ class Config:
     output_dir: str = "outputs"
     log_level: str = "INFO"
 
+    # ── Day 18 新增：选模型和数据集（通用模板的核心两行）──────────
+    # 换成别的实现时，只改这两个字符串，**训练脚本一个字都不用动**。
+    # 可选值见 `python scripts/train.py --list`（从注册表实时读，不会过时）
+    dataset: str = "mnist"
+    model: str = "mlp"
+    # 要不要把输入摊平成一维。
+    #   MLP 必须摊平：(B,1,28,28) → (B,784)
+    #   CNN 必须不摊：卷积要的就是 28×28 的空间结构
+    # 为什么不做成自动判断：框架无法知道"这个模型还要不要空间信息"。
+    # 摊平后相邻像素的关系就永久丢了 —— 这也是 MLP 卡在 98% 的原因之一。
+    flatten: bool = True
+
     # ── Day 13 新增：数据 ──────────────────────────────────────────
     data_dir: str = "data"          # MNIST 存在哪（相对项目根）
     batch_size: int = 128           # 每批多少条
@@ -70,6 +95,11 @@ class Config:
     # ── Day 15 新增：正则化 ────────────────────────────────────────
     dropout: float = 0.0            # 丢弃概率（0 = 不加，Day 13 就是 0）
     early_stop_patience: int = 0    # 验证 loss 连续几轮不降就停（0 = 不停）
+    # Day 18 从命令行挪进配置：以前它只存在于 argparse，
+    # 导致"按 loss 早停"和"按 acc 早停"两次跑出来的 config.yaml
+    # 一模一样 —— 半年后根本分不清哪个是哪个。
+    # 凡是**会影响训练结果**的东西，都必须进 config.yaml。
+    early_stop_metric: str = "loss"   # loss / acc
 
     # ── Day 16 新增：损失函数 ──────────────────────────────────────
     # ce   = nn.CrossEntropyLoss（PyTorch 官方实现）
@@ -136,6 +166,24 @@ class Config:
         if self.linear not in ALLOWED_LINEARS:
             raise ValueError(
                 f"linear 只能是 {ALLOWED_LINEARS} 之一（my = 手写版），你给的是 {self.linear!r}"
+            )
+
+        # ── Day 18 新增的校验 ──────────────────────────────────────
+        # 这里只查「是不是非空字符串」，不查「是不是已注册的模型」——
+        # 原因见文件顶部 ALLOWED_MODELS 那段注释（避免 config 依赖具体实现）。
+        if not self.model or not isinstance(self.model, str):
+            raise ValueError(f"model 必须是非空字符串，你给的是 {self.model!r}")
+        if not self.dataset or not isinstance(self.dataset, str):
+            raise ValueError(f"dataset 必须是非空字符串，你给的是 {self.dataset!r}")
+        if not isinstance(self.flatten, bool):
+            # 从 yaml 读进来的 "true"/"false" 会被 safe_load 解析成 bool，
+            # 但如果有人写成字符串 "False"，这里就要拦住 ——
+            # 非空字符串在 if 里恒为真，`flatten="False"` 会静默当成 True。
+            raise ValueError(f"flatten 必须是 bool（true/false），你给的是 {self.flatten!r}")
+        if self.early_stop_metric not in ALLOWED_ES_METRICS:
+            raise ValueError(
+                f"early_stop_metric 只能是 {ALLOWED_ES_METRICS} 之一"
+                f"（推荐 loss，见 Day 15 的实测对比），你给的是 {self.early_stop_metric!r}"
             )
 
         # 范围检查：数值型的错（batch_size=0、lr 是负数）也会一路错到训练中期

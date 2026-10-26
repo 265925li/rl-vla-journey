@@ -17,6 +17,14 @@ from torchvision import datasets, transforms
 
 from src.utils.seed import make_generator
 
+# ── 数据集的固定形状 ─────────────────────────────────────────────────
+# 放在数据集模块里，而不是散落在训练脚本里。
+# 理由：这些数字是**数据本身的属性**，不是某个模型的超参。
+# 换模型（MLP → CNN）时它们不变；换数据集（MNIST → CIFAR）时它们才变。
+IMAGE_SIZE = 28
+NUM_CLASSES = 10
+IN_DIM = IMAGE_SIZE * IMAGE_SIZE      # 784，摊平之后的长度
+
 # MNIST 全集的均值 / 标准差（官方给的数字，不是现算的）。
 # 归一化后数据大致变成「均值 0、标准差 1」，模型更好训。
 # 我们这版 MLP 只用 ToTensor（把 0~255 压到 0~1），已经够用；
