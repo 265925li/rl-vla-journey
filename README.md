@@ -103,14 +103,17 @@ $PY = "E:\anaconda\envs\pytorch\python.exe"
 # 0) 环境自检（16 项）
 & $PY scripts\check_env.py
 
-# 1) 手写算子的对拍（Day 12 优化器五关 / Day 16 损失函数七关）
+# 1) 手写算子的对拍（Day 12 优化器五关 / Day 16 损失函数七关 / Day 17 线性层七关）
 & $PY src\utils\optim.py --train
 & $PY src\utils\losses.py --train
+& $PY src\utils\layers.py --train
 
 # 2) MNIST 训练（默认 10 epoch，约 95 秒）
 & $PY scripts\train_mnist.py
 #   用手写损失函数替换 nn.CrossEntropyLoss，证明可以无缝换掉
 & $PY scripts\train_mnist.py --loss myce --epochs 2 --tag myce
+#   用手写 Linear 层替换 nn.Linear（整个模型的所有全连接层都换掉）
+& $PY scripts\train_mnist.py --linear my --epochs 2 --tag mylinear
 #   正则化实验（dropout / weight decay / 早停）
 & $PY scripts\train_mnist.py --dropout 0.2 --weight-decay 1e-4 --patience 3
 
@@ -202,6 +205,8 @@ exp: PPO on HalfCheetah, 5 seeds, mean return 3120 +- 180
 
 - [x] 手写 MLP 训练 MNIST，不用高级封装，test acc **> 97%** → 实测 **98.00%**
 - [x] 手写 softmax / 交叉熵前向+反向，与 PyTorch 梯度误差 **< 1e-5** → 实测 **1.86e-09**
-- [ ] 手写 Linear 层前向+反向，误差 < 1e-5 → Day 17
+- [x] 手写 Linear 层前向+反向，误差 **< 1e-5** → 实测 **1.49e-08**
 - [ ] 通用 `train.py --config config.yaml` 模板 → Day 19
 - [x] 本阶段提交 **≥ 15 次** → 已 30+ 次
+
+**三个手写算子（softmax / 交叉熵 / Linear）全部与官方实现对拍通过。**
