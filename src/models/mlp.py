@@ -42,6 +42,14 @@ class MLP(nn.Module):
         dropout=0.0  不丢（等价于没加，Day 13 用的就是这个）
         dropout=0.2  每次前向随机把 20% 的神经元输出置 0
         dropout=0.5  丢一半（老论文里常用，对 MLP 已经很猛了）
+
+    ── Day 17 新增 linear_cls 参数 ────────────────────────────────────
+    默认 nn.Linear。传 src.utils.layers.MyLinear 就能把**所有**全连接层
+    换成手写实现，训练脚本一行不用改。
+
+    这就是「接口对齐」的价值：只要 MyLinear 的构造签名和属性名
+    （weight / bias / in_features / out_features）跟 nn.Linear 一样，
+    它在任何用到 Linear 的地方都能顶上去。
     """
 
     def __init__(
@@ -52,6 +60,7 @@ class MLP(nn.Module):
         n_layers: int,
         act: str = "relu",
         dropout: float = 0.0,
+        linear_cls: type[nn.Module] = nn.Linear,
     ) -> None:
         super().__init__()
         if n_layers < 2:
@@ -70,13 +79,14 @@ class MLP(nn.Module):
         self.n_layers = n_layers
         self.act_name = act
         self.dropout_p = dropout
+        self.linear_cls = linear_cls
 
         act_cls = ACT_MAP[act]
         # 前 n_layers-1 层：Linear + 激活 (+ Dropout)；最后 1 层：Linear，不接激活
         layers: list[nn.Module] = []
         last = in_dim
         for _ in range(n_layers - 1):
-            layers.append(nn.Linear(last, hidden))
+            layers.append(linear_cls(last, hidden))
             layers.append(act_cls())
             # ── 顺序：Linear → 激活 → Dropout ─────────────────────
             # 为什么不是 Linear → Dropout → 激活？
@@ -89,7 +99,7 @@ class MLP(nn.Module):
                 # 所以 count_params_manual() 一个字都不用改。
                 layers.append(nn.Dropout(dropout))
             last = hidden
-        layers.append(nn.Linear(last, out_dim))
+        layers.append(linear_cls(last, out_dim))
 
         # 关键：必须是 nn.ModuleList / nn.Sequential。
         # 普通 list 不会被 __setattr__ 注册，parameters() 会返回空 —— 不报错，但训练不动。
@@ -133,9 +143,15 @@ def init_weights(model: nn.Module, scheme: str) -> None:
     if scheme not in ("default", "xavier", "kaiming"):
         raise ValueError(f"scheme 只能是 default/xavier/kaiming，收到 {scheme!r}")
 
-    # 只处理 Linear：ReLU 这类模块没有 weight/bias
+    # 只处理线性层：ReLU 这类模块没有 weight/bias
     for m in model.modules():
-        if not isinstance(m, nn.Linear):
+        # Day 17：这里**不能**用 isinstance(m, nn.Linear)。
+        # 手写的 MyLinear 是 nn.Module 的直接子类，不是 nn.Linear 的子类
+        # （它的 forward 走自定义 autograd.Function），isinstance 会返回 False，
+        # 结果就是「手写层的初始化被静默跳过」—— 不报错，但三种初始化方案
+        # 的表现完全一样，你会以为初始化失效了。
+        # 改成鸭子类型判断：有 weight 参数就算线性层。
+        if not hasattr(m, "weight") or not isinstance(m.weight, nn.Parameter):
             continue
         if scheme == "xavier":
             nn.init.xavier_uniform_(m.weight)

@@ -49,6 +49,7 @@ import matplotlib.pyplot as plt
 from src.data.mnist import build_loaders
 from src.models.mlp import MLP, count_params_manual
 from src.utils.config import load_config, save_config
+from src.utils.layers import MyLinear
 from src.utils.logger import get_logger
 from src.utils.losses import MyCrossEntropy
 from src.utils.optim import MySGD, MyStepLR
@@ -72,7 +73,12 @@ def build_model(cfg) -> nn.Module:
     （摊平这件事放在训练循环里做，见 train_one_epoch 的第一行。）
 
     Day 15：多传一个 dropout。cfg.dropout=0 时结构和 Day 13 完全相同。
+
+    Day 17：cfg.linear="my" 时把**所有**全连接层换成手写的 MyLinear。
+    这一步之所以能一行搞定，是因为 MyLinear 的构造签名和参数属性
+    跟 nn.Linear 完全一致 —— 这叫「接口对齐」，是能替换的前提。
     """
+    linear_cls = MyLinear if cfg.linear == "my" else nn.Linear
     return MLP(
         in_dim=IN_DIM,
         hidden=cfg.hidden,
@@ -80,6 +86,7 @@ def build_model(cfg) -> nn.Module:
         n_layers=cfg.n_layers,
         act=cfg.act,
         dropout=cfg.dropout,
+        linear_cls=linear_cls,
     )
 
 
@@ -305,6 +312,11 @@ def parse_args():
         "--loss", type=str, default=None, choices=["ce", "myce"],
         help="ce = nn.CrossEntropyLoss，myce = Day 16 手写版（数值上一致）",
     )
+    # ── Day 17 新增：换成手写的 Linear 层 ──────────────────────────
+    ap.add_argument(
+        "--linear", type=str, default=None, choices=["torch", "my"],
+        help="torch = nn.Linear，my = Day 17 手写版（数值上一致，误差 < 1e-6）",
+    )
     ap.add_argument("--tag", type=str, default="run", help="输出目录后缀，方便区分多次实验")
     return ap.parse_args()
 
@@ -327,6 +339,7 @@ def main() -> None:
             "weight_decay": args.weight_decay,
             "early_stop_patience": args.patience,
             "loss": args.loss,
+            "linear": args.linear,
         }.items()
         if v is not None
     }
@@ -378,6 +391,11 @@ def main() -> None:
              f"momentum={cfg.momentum}  scheduler={cfg.scheduler}  "
              f"weight_decay={cfg.weight_decay}")
     log.info(f"损失函数 {cfg.loss}  →  {type(crit).__name__}")
+    # 顺手打印第一层的类名，一眼确认到底用的是哪个 Linear。
+    # 别信「我传了参数所以肯定生效了」—— 参数名拼错会被 argparse 拦下，
+    # 但如果哪天 build_model 里的分支写反了，只有打印出来才看得见。
+    first_linear = next(m for m in model.modules() if hasattr(m, "in_features"))
+    log.info(f"线性层 {cfg.linear}  →  {type(first_linear).__name__}")
     log.info(f"正则化 dropout={cfg.dropout}  "
              f"early_stop_patience={cfg.early_stop_patience}  判据={args.es_metric}")
 

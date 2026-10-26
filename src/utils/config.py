@@ -36,6 +36,8 @@ ALLOWED_SCHEDULERS = ("none", "step")
 ALLOWED_ACTS = ("relu", "tanh", "gelu")
 # Day 16 新增：损失函数。myce = 手写 softmax+CE（src/utils/losses.py）
 ALLOWED_LOSSES = ("ce", "myce")
+# Day 17 新增：线性层。my = 手写 MyLinear（src/utils/layers.py）
+ALLOWED_LINEARS = ("torch", "my")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -74,6 +76,12 @@ class Config:
     # myce = 手写 softmax + 交叉熵（src/utils/losses.py，七关对拍通过）
     # 两者数值上逐位一致，切它只是为了证明"你真的会自己写"
     loss: str = "ce"
+
+    # ── Day 17 新增：线性层实现 ────────────────────────────────────
+    # torch = nn.Linear
+    # my    = 手写 MyLinear（src/utils/layers.py，七关对拍通过）
+    # 换它比换 loss 更彻底：这个模型里所有全连接层都会被替掉
+    linear: str = "torch"
 
     # ── Day 13 新增：优化 ──────────────────────────────────────────
     optimizer: str = "sgd"          # sgd / adam / mysgd（自己手写的那个）
@@ -122,6 +130,12 @@ class Config:
         if self.loss not in ALLOWED_LOSSES:
             raise ValueError(
                 f"loss 只能是 {ALLOWED_LOSSES} 之一（myce = 手写版），你给的是 {self.loss!r}"
+            )
+
+        # ── Day 17 新增的校验 ──────────────────────────────────────
+        if self.linear not in ALLOWED_LINEARS:
+            raise ValueError(
+                f"linear 只能是 {ALLOWED_LINEARS} 之一（my = 手写版），你给的是 {self.linear!r}"
             )
 
         # 范围检查：数值型的错（batch_size=0、lr 是负数）也会一路错到训练中期
