@@ -21,13 +21,22 @@
 
 | 目录 | 用途 | 说明 |
 |---|---|---|
-| `src/utils/` | 工具模块 | 日志、路径、config 读取等被多个脚本复用的代码 |
+| `src/utils/` | 工具模块 | 日志、路径、config、seed、**手写的优化器与损失函数** |
+| `src/models/` | 模型定义 | `mlp.py` |
+| `src/data/` | 数据加载 | `mnist.py` |
 | `configs/` | 实验配置 | YAML 文件。超参写在配置里，不硬编码进代码 |
-| `scripts/` | 一次性脚本 | 画图、环境探针、数据转换等，跑完即弃的入口 |
+| `scripts/` | 入口脚本 | 训练、对照实验、环境自检。**`check_env.py` 在这里** |
 | `notebooks/` | 探索性代码 | **正式代码不许放这里**。只用来快速验证想法 |
+| `docs/` | **学习资产** | 讲义、进度台账、速查卡。**进版本控制** ← 见下方 |
 | `outputs/` | 训练输出 | 日志、图表、checkpoint。**已在 .gitignore 中，不进版本库** |
 | `weekly/` | 每周复盘 | 每周一份，写清这周做了什么、卡在哪、下周改什么 |
-| `src/` | 核心代码 | 算法实现、环境封装、训练循环 |
+
+**为什么 `docs/` 要单独存在、而且必须进 git？**
+`2026-10-26` 工作区被清空过一次：代码因为进了 git 全部完好，
+而放在仓库外面 `学习计划/` 目录里的 Day 11–15 讲义、速查卡、逐日清单**全部丢失**，
+一份都找不回来。从那天起讲义一律写进 `docs/` 并提交 ——
+**只有 `git clone` 能救回来的东西，才算真的存下来了**。
+详见 [`docs/README.md`](docs/README.md)。
 
 **为什么 `outputs/` 要排除在 Git 之外？**
 因为它是**产物**不是**源码**。几百 MB 的 checkpoint 提交上去，仓库会变得无法 clone，
@@ -69,45 +78,61 @@ cd "E:\work Buddy\强化学习\rl-vla-journey"
 **怀疑环境有问题时**，先跑这个：
 
 ```powershell
-cd "E:\work Buddy\强化学习"
-& "E:\anaconda\envs\pytorch\python.exe" 00-setup\check_env.py
+cd "E:\work Buddy\强化学习\rl-vla-journey"
+& "E:\anaconda\envs\pytorch\python.exe" scripts\check_env.py
 ```
 
-期望末行输出 `结果：16/16 项通过`。它同时会打印实际使用的解释器路径，
-所以也是「我到底在不在正确环境里」的检测器。
+期望末行输出 `结果：16/16 项通过 —— 环境就绪，可以开工。`
+
+它检查五组共 16 项：解释器（是否在 `envs\pytorch` 内、版本）、依赖库、GPU（CUDA 版
+torch、算力等级、cuDNN、**真跑一次 fp16 矩阵乘**）、功能（autograd 对拍、中文字体
+能否渲染）、项目结构（目录 + 配置能否解析、`data_dir` 是否已绝对化）。
+
+它同时会打印实际使用的解释器路径，所以也是「我到底在不在正确环境里」的检测器。
 
 ---
 
 ## 四、现在能跑什么
 
-P0 目前只到「工程地基」，**还没有训练逻辑**。可运行的两个入口：
+P0 已完成到「手写算子」，**MNIST 端到端训练已经跑通**（test acc 98.00%）。
 
 ```powershell
-# 1) 环境探针：打印解释器、torch、CUDA、显卡、显存、算力等级
-& "E:\anaconda\envs\pytorch\python.exe" scripts\env_info.py
-#    → 结果写入 outputs/env_report.txt
+cd "E:\work Buddy\强化学习\rl-vla-journey"
+$PY = "E:\anaconda\envs\pytorch\python.exe"
 
-# 2) 训练入口（当前只有配置系统，训练逻辑待 W2 实现）
-& "E:\anaconda\envs\pytorch\python.exe" scripts\train.py --dry-run
-& "E:\anaconda\envs\pytorch\python.exe" scripts\train.py --dry-run --seed 42 --device cpu
-#    → 建 outputs/<时间戳>_train/，内含 config.yaml（生效配置备份）+ train.log
+# 0) 环境自检（16 项）
+& $PY scripts\check_env.py
+
+# 1) 手写算子的对拍（Day 12 优化器五关 / Day 16 损失函数七关）
+& $PY src\utils\optim.py --train
+& $PY src\utils\losses.py --train
+
+# 2) MNIST 训练（默认 10 epoch，约 95 秒）
+& $PY scripts\train_mnist.py
+#   用手写损失函数替换 nn.CrossEntropyLoss，证明可以无缝换掉
+& $PY scripts\train_mnist.py --loss myce --epochs 2 --tag myce
+#   正则化实验（dropout / weight decay / 早停）
+& $PY scripts\train_mnist.py --dropout 0.2 --weight-decay 1e-4 --patience 3
+
+# 3) 四组正则化对照实验（约 6 分钟，子进程隔离随机状态）
+& $PY scripts\run_ablation.py --epochs 10
+
+# 4) 训练循环的四关教学脚本（Day 11，含"填错会怎样"的反面案例）
+& $PY scripts\demo_train_loop.py
 ```
 
-**配置的优先级：命令行 > `configs/default.yaml` > 代码里的默认值。**
-改参数不用改代码：
+输出落在 `outputs\<时间戳>_mnist_<tag>\`，内含 `history.json`（逐轮指标，**不含耗时**
+—— 混进耗时就没法用它 diff 两跑证明复现性）、`best.pt`、`curves.png`、`config.yaml`。
 
-```yaml
-# configs/default.yaml
-seed: 123
-device: cuda
-output_dir: outputs/exp_baseline
-log_level: DEBUG
+**多跑几次一定用不同 `--tag`**，否则分不清哪个目录是哪次。
+
+**配置的优先级：命令行 > yaml > 代码里的默认值。** 改参数不用改代码：
+
+```powershell
+& $PY scripts\train_mnist.py --epochs 3 --lr 5e-4 --seed 42 --device cpu
 ```
 
-`--seed 42` 只覆盖 `seed`，没传的键保留 yaml 里的值——
-在日志的「命令行覆盖」那一行能直接看到本次覆盖了什么。
-
-配置里的值会经过校验（`device` 只能是 `cpu`/`cuda`，`log_level` 只能是四个标准级别），
+配置里的值会经过校验（`optimizer` / `scheduler` / `act` / `loss` / `dropout` 范围等），
 **配错在读配置的那一刻就报错**，不会拖到训练第 1000 步才发现。
 
 ---
@@ -162,13 +187,21 @@ exp: PPO on HalfCheetah, 5 seeds, mean return 3120 +- 180
 
 ## 七、进度
 
-详细的 26 周计划见 `../学习计划/`，P0 阶段的 21 天逐日清单见 `../学习计划/P0-逐日执行清单.md`。
+**P0 逐日台账（Day 1–16，含所有实测数字和踩过的坑）见 [`docs/P0-进度台账.md`](docs/P0-进度台账.md)。**
 
 | 阶段 | 周期 | 状态 |
 |---|---|---|
-| P0 工具箱 | W1-W3 | 进行中 |
-| P1 RL 地基 | W4-W8 | 未开始 |
-| P2 策略优化 | W9-W14 | 未开始 |
-| P3 VLA 入门 | W15-W20 | 未开始 |
-| P4 速览 + mini 课题 | W21-W24 | 未开始 |
-| P5 收口 | W25-W26 | 未开始 |
+| P0 工具箱 | W1–W3（Day 1–21） | **进行中，16/21** |
+| P1 RL 地基 | W4–W8 | 未开始 |
+| P2 策略优化 | W9–W14 | 未开始 |
+| P3 VLA 入门 | W15–W20 | 未开始 |
+| P4 速览 + mini 课题 | W21–W24 | 未开始 |
+| P5 收口 | W25–W26 | 未开始 |
+
+**P0 硬指标**
+
+- [x] 手写 MLP 训练 MNIST，不用高级封装，test acc **> 97%** → 实测 **98.00%**
+- [x] 手写 softmax / 交叉熵前向+反向，与 PyTorch 梯度误差 **< 1e-5** → 实测 **1.86e-09**
+- [ ] 手写 Linear 层前向+反向，误差 < 1e-5 → Day 17
+- [ ] 通用 `train.py --config config.yaml` 模板 → Day 19
+- [x] 本阶段提交 **≥ 15 次** → 已 30+ 次
