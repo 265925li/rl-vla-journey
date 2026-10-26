@@ -21,7 +21,8 @@
 
 | 目录 | 用途 | 说明 |
 |---|---|---|
-| `src/utils/` | 工具模块 | 日志、路径、config、seed、**手写的优化器与损失函数** |
+| `src/engine/` | **训练引擎** | 注册表、Trainer、训练循环、命令行。**换模型/数据集只改这里** |
+| `src/utils/` | 工具模块 | 日志、路径、config、seed、**手写的优化器与损失函数与 Linear 层** |
 | `src/models/` | 模型定义 | `mlp.py` |
 | `src/data/` | 数据加载 | `mnist.py` |
 | `configs/` | 实验配置 | YAML 文件。超参写在配置里，不硬编码进代码 |
@@ -30,6 +31,20 @@
 | `docs/` | **学习资产** | 讲义、进度台账、速查卡。**进版本控制** ← 见下方 |
 | `outputs/` | 训练输出 | 日志、图表、checkpoint。**已在 .gitignore 中，不进版本库** |
 | `weekly/` | 每周复盘 | 每周一份，写清这周做了什么、卡在哪、下周改什么 |
+
+**`src/engine/` 的分层**（Day 18 重构的产物）：
+
+```
+cli.py  →  trainer.py  →  registry.py    名字 → 构建函数
+                ↓              ↑
+           builtin.py ─────────┘         只有这里知道 mlp / mnist 是什么
+                ↓
+        models/ · data/ · utils/
+```
+
+一条硬约束：**`trainer.py` 不认识任何具体模型。** 它只会说「给我一个叫
+`cfg.model` 的东西」。这样 P1 加 CNN 时，只要 `trainer.py` 没改，
+就能确定训练流程（早停、存盘、记录格式）的行为完全没变。
 
 **为什么 `docs/` 要单独存在、而且必须进 git？**
 `2026-10-26` 工作区被清空过一次：代码因为进了 git 全部完好，
@@ -94,7 +109,8 @@ torch、算力等级、cuDNN、**真跑一次 fp16 矩阵乘**）、功能（aut
 
 ## 四、现在能跑什么
 
-P0 已完成到「手写算子」，**MNIST 端到端训练已经跑通**（test acc 98.00%）。
+**P0 已全部完成**：环境、配置系统、反向传播、训练循环、优化器、MNIST 端到端
+（test acc 98.00%）、过拟合与正则化、三个手写算子、通用训练模板。
 
 ```powershell
 cd "E:\work Buddy\强化学习\rl-vla-journey"
@@ -103,40 +119,57 @@ $PY = "E:\anaconda\envs\pytorch\python.exe"
 # 0) 环境自检（16 项）
 & $PY scripts\check_env.py
 
-# 1) 手写算子的对拍（Day 12 优化器五关 / Day 16 损失函数七关 / Day 17 线性层七关）
-& $PY src\utils\optim.py --train
-& $PY src\utils\losses.py --train
-& $PY src\utils\layers.py --train
+# ── 通用训练入口（Day 18）─────────────────────────────────────
+& $PY scripts\train.py --list                      # 有哪些模型/数据集可选
+& $PY scripts\train.py --dry-run                   # 打印最终生效配置，不训练
+& $PY scripts\train.py --epochs 3 --tag quick      # 覆盖单个字段
+& $PY scripts\train.py --set dropout=0.2 --set hidden=512  # 覆盖任意字段
 
-# 2) MNIST 训练（默认 10 epoch，约 95 秒）
-& $PY scripts\train_mnist.py
-#   用手写损失函数替换 nn.CrossEntropyLoss，证明可以无缝换掉
-& $PY scripts\train_mnist.py --loss myce --epochs 2 --tag myce
-#   用手写 Linear 层替换 nn.Linear（整个模型的所有全连接层都换掉）
-& $PY scripts\train_mnist.py --linear my --epochs 2 --tag mylinear
-#   正则化实验（dropout / weight decay / 早停）
+# ── 手写算子的对拍 ────────────────────────────────────────────
+& $PY src\utils\optim.py --train      # Day 12  优化器五关
+& $PY src\utils\losses.py --train     # Day 16  损失函数七关
+& $PY src\utils\layers.py --train     # Day 17  线性层七关
+
+# ── MNIST 训练 ───────────────────────────────────────────────
+& $PY scripts\train_mnist.py                              # 10 epoch，约 95 秒
+& $PY scripts\train_mnist.py --loss myce  --epochs 2      # 换手写损失函数
+& $PY scripts\train_mnist.py --linear my  --epochs 2      # 换手写 Linear 层
 & $PY scripts\train_mnist.py --dropout 0.2 --weight-decay 1e-4 --patience 3
 
-# 3) 四组正则化对照实验（约 6 分钟，子进程隔离随机状态）
-& $PY scripts\run_ablation.py --epochs 10
-
-# 4) 训练循环的四关教学脚本（Day 11，含"填错会怎样"的反面案例）
-& $PY scripts\demo_train_loop.py
+# ── 对照实验与教学脚本 ────────────────────────────────────────
+& $PY scripts\run_ablation.py --epochs 10   # 四组正则化对照（约 6 分钟）
+& $PY scripts\demo_train_loop.py            # Day 11 训练循环四关
 ```
 
-输出落在 `outputs\<时间戳>_mnist_<tag>\`，内含 `history.json`（逐轮指标，**不含耗时**
-—— 混进耗时就没法用它 diff 两跑证明复现性）、`best.pt`、`curves.png`、`config.yaml`。
+`scripts\train.py` 和 `scripts\train_mnist.py` 调的是**同一个 `main()`**，
+参数完全通用；后者只是为兼容旧命令保留的薄壳。
+
+输出落在 `outputs\<时间戳>_<dataset>_<tag>\`，内含 `history.json`（逐轮指标，
+**不含耗时** —— 混进耗时就没法用它 diff 两跑证明复现性）、`best.pt`、
+`curve.png`、`config.yaml`（**这一跑的全部生效参数**）。
 
 **多跑几次一定用不同 `--tag`**，否则分不清哪个目录是哪次。
 
-**配置的优先级：命令行 > yaml > 代码里的默认值。** 改参数不用改代码：
+**配置的三级优先级：命令行 > yaml > 代码里的默认值。**
 
 ```powershell
-& $PY scripts\train_mnist.py --epochs 3 --lr 5e-4 --seed 42 --device cpu
+& $PY scripts\train.py --epochs 3 --lr 5e-4 --seed 42 --device cpu
+& $PY scripts\train.py --set act=tanh --set n_layers=3    # 冷门字段也不用改代码
 ```
 
-配置里的值会经过校验（`optimizer` / `scheduler` / `act` / `loss` / `dropout` 范围等），
-**配错在读配置的那一刻就报错**，不会拖到训练第 1000 步才发现。
+配置里的值会经过校验（`optimizer` / `scheduler` / `act` / `loss` / `linear` /
+`early_stop_metric` / `flatten` 类型 / `dropout` 范围等），**配错在读配置的
+那一刻就报错**，不会拖到训练第 1000 步才发现。
+
+**加一个新模型**（P1 会用到）：在 `src/engine/builtin.py` 里加
+
+```python
+@register_model("cnn")
+def build_cnn(cfg):
+    return CNN(...)
+```
+
+然后在 yaml 里写 `model: cnn`。`trainer.py` / `cli.py` 一个字都不用改。
 
 ---
 
@@ -190,23 +223,23 @@ exp: PPO on HalfCheetah, 5 seeds, mean return 3120 +- 180
 
 ## 七、进度
 
-**P0 逐日台账（Day 1–16，含所有实测数字和踩过的坑）见 [`docs/P0-进度台账.md`](docs/P0-进度台账.md)。**
+**P0 逐日台账（Day 1–21，含所有实测数字和踩过的坑）见 [`docs/P0-进度台账.md`](docs/P0-进度台账.md)。**
 
 | 阶段 | 周期 | 状态 |
 |---|---|---|
-| P0 工具箱 | W1–W3（Day 1–21） | **进行中，16/21** |
-| P1 RL 地基 | W4–W8 | 未开始 |
+| P0 工具箱 | W1–W3（Day 1–21） | **✅ 完成** |
+| P1 RL 地基 | W4–W8 | **进行中** |
 | P2 策略优化 | W9–W14 | 未开始 |
 | P3 VLA 入门 | W15–W20 | 未开始 |
 | P4 速览 + mini 课题 | W21–W24 | 未开始 |
 | P5 收口 | W25–W26 | 未开始 |
 
-**P0 硬指标**
+**P0 硬指标（5/5 全部完成）**
 
-- [x] 手写 MLP 训练 MNIST，不用高级封装，test acc **> 97%** → 实测 **98.00%**
-- [x] 手写 softmax / 交叉熵前向+反向，与 PyTorch 梯度误差 **< 1e-5** → 实测 **1.86e-09**
-- [x] 手写 Linear 层前向+反向，误差 **< 1e-5** → 实测 **1.49e-08**
-- [ ] 通用 `train.py --config config.yaml` 模板 → Day 19
-- [x] 本阶段提交 **≥ 15 次** → 已 30+ 次
+- [x] 手写 MLP 训练 MNIST，不用高级封装，test acc **> 97%** → 实测 **98.00%**（Day 13）
+- [x] 手写 softmax / 交叉熵前向+反向，与 PyTorch 梯度误差 **< 1e-5** → 实测 **1.86e-09**（Day 16）
+- [x] 手写 Linear 层前向+反向，误差 **< 1e-5** → 实测 **1.49e-08**（Day 17）
+- [x] 通用 `train.py --config config.yaml` 模板 → Day 18，**重构前后确定性字段逐字节相同**
+- [x] 本阶段提交 **≥ 15 次** → 已 36+ 次
 
 **三个手写算子（softmax / 交叉熵 / Linear）全部与官方实现对拍通过。**
