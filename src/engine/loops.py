@@ -11,8 +11,22 @@
 理由：核心循环不应该认识 Config —— 一旦它开始读 cfg.xxx，
 以后每加一个配置字段，你都得怀疑「这个字段会不会影响训练循环」。
 现在它只依赖三个东西：模型、loader、优化器/损失，接口面最小。
+
+Day 26 加了 amp，这条原则被检验了一次：循环需要知道"要不要 autocast、
+要不要 scaler"。有两条路：
+
+    ❌ 传 cfg 进来，循环里 `if cfg.amp == "fp16":`
+       → 循环从此认识配置系统，以后每个 amp 相关字段都要在这里加分支
+    ✅ 传一个已经装好的 AmpStepper 进来，循环只调它的三个方法
+       → 循环仍然不认识 Config，只认识一个"一步怎么走"的小对象
+
+选了后者。代价是 loops.py 多了一个可选参数（默认 None = 纯 fp32，
+行为与 Day 25 完全相同），收益是 amp 的全部复杂度被关在
+src/utils/amp_scaler.py 一个文件里。
 """
 from __future__ import annotations
+
+import contextlib
 
 import torch
 
@@ -46,10 +60,18 @@ def _to_device(xb, device, flatten: bool):
 
 
 def train_one_epoch(model, loader, opt, crit, device, flatten: bool = True,
-                    log=None) -> tuple[float, float, int]:
+                    log=None, stepper=None) -> tuple[float, float, int]:
     """跑完一个 epoch，返回 (平均 loss, 准确率, 样本数)。
 
     循环体就是那五行，多的只是「累加统计量」和「第一次打印形状」。
+
+    参数 stepper：None 表示纯 fp32（Day 25 的行为，**逐位不变**）。
+                  传 AmpStepper 时，前向包 autocast、反向往 loss 上乘 scale、
+                  更新走 unscale→clip→step→update 这条固定顺序。
+
+    ⚠️ stepper=None 这条路径必须和 Day 25 逐位一致。所以这里**不写**
+    `with nullcontext():` 包住整个循环体 —— 而是直接在分支里选两条路径。
+    少一层缩进变化，也让"没传 stepper 时行为完全不变"在源码上一眼可见。
     """
     # train() 打开训练模式。对纯 MLP 没有影响，但一旦加了 Dropout/BatchNorm
     # 就必须有，否则行为是错的（而且不报错）。写在这里是为了养成习惯。
@@ -69,10 +91,19 @@ def train_one_epoch(model, loader, opt, crit, device, flatten: bool = True,
         yb = yb.to(device)
 
         opt.zero_grad()              # ① 擦掉上一步的梯度
-        logits = model(xb)           # ② 前向
-        loss = crit(logits, yb)      # ③ 打分：一个标量 ()
-        loss.backward()              # ④ 追责：算出每个参数的梯度
-        opt.step()                   # ⑤ 微调：按梯度挪一小步
+        if stepper is None:
+            logits = model(xb)           # ② 前向
+            loss = crit(logits, yb)      # ③ 打分：一个标量 ()
+            loss.backward()              # ④ 追责：算出每个参数的梯度
+            opt.step()                   # ⑤ 微调：按梯度挪一小步
+        else:
+            # Day 26：还是那五步，但前向/反向/更新各自多了 amp 的动作。
+            # 顺序由 AmpStepper 保证 —— 尤其 unscale_ 必须在 clip 之前（关 6）。
+            with stepper.autocast():
+                logits = model(xb)
+                loss = crit(logits, yb)
+            stepper.backward(loss)
+            stepper.step(opt, model.parameters())
 
         # ── 累加统计（按样本数加权，Day 11 算过不加权会错多少）──
         # 末批通常不满（60000 % 128 ≠ 0），简单平均会让这一批的权重过大。

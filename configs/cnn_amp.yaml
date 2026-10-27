@@ -1,0 +1,42 @@
+# Day 26 · 开着 amp 的 CNN 配置。
+# 和 cnn_bn.yaml 只差两行：amp: fp16 和 grad_clip。
+#
+# ⚠️ 在这台机器上（GTX 1660 Ti / sm_75 / TU116）amp **比 fp32 慢**
+# 1.5~4 倍，详见 docs/Day26-混合精度.md 的实测表。
+# 这个配置文件的存在意义不是"推荐使用"，是"让那个对照实验可复现"。
+amp: fp16
+grad_clip: 1.0
+
+dataset: mnist
+data_dir: data
+device: cuda
+output_dir: outputs
+
+model: cnn
+flatten: false
+in_channels: 1
+channels: "16,32"
+hidden: 128
+bn: torch
+
+batch_size: 128
+val_size: 6000
+num_workers: 0
+
+act: relu
+dropout: 0.0
+loss: ce
+
+optimizer: sgd
+lr: 0.05
+momentum: 0.9
+weight_decay: 0.0
+epochs: 3
+scheduler: none
+
+augment_shift: 2.0
+augment_angle: 10.0
+
+early_stop_patience: 0
+early_stop_metric: loss
+seed: 0

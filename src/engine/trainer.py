@@ -46,6 +46,7 @@ from src.engine.builders import (
 )
 from src.engine.loops import evaluate, train_one_epoch
 from src.engine.registry import build_dataset, build_model
+from src.utils.amp_scaler import AmpStepper
 from src.utils.config import save_config
 from src.utils.logger import get_logger
 from src.utils.paths import run_dir
@@ -94,6 +95,7 @@ class Trainer:
         self.crit = None
         self.opt = None
         self.sched = None
+        self.stepper = None
         self.history: list[dict] = []
         self.timings: list[float] = []
         self.best_acc = -1.0
@@ -146,6 +148,26 @@ class Trainer:
                  f"momentum={cfg.momentum}  scheduler={cfg.scheduler}  "
                  f"weight_decay={cfg.weight_decay}")
         log.info(f"损失函数 {cfg.loss}  →  {type(self.crit).__name__}")
+
+        # ── Day 26：amp 的一步执行器 ────────────────────────────
+        # 在这里建而不是在 loops.py 里建，是为了让 loops 保持"不认识 cfg"。
+        # Trainer 是唯一知道 cfg 的地方，它把 cfg 翻译成一个小对象交出去。
+        self.stepper = None
+        if cfg.amp != "none":
+            dtype = torch.float16 if cfg.amp == "fp16" else torch.bfloat16
+            self.stepper = AmpStepper(
+                self.device, enabled=True, dtype=dtype, grad_clip=cfg.grad_clip
+            )
+            log.info(self.stepper.describe())
+        elif cfg.grad_clip > 0:
+            # 不开 amp 但要裁剪：stepper 仍然有用（它只是跳过 unscale 部分）
+            self.stepper = AmpStepper(
+                self.device, enabled=False, grad_clip=cfg.grad_clip
+            )
+            log.info(self.stepper.describe())
+        else:
+            log.info("混合精度 amp=none（fp32），梯度裁剪关闭")
+
         # 顺手打印第一层的类名，一眼确认到底用的是哪个 Linear。
         # 别信「我传了参数所以肯定生效了」—— 参数名拼错会被 argparse 拦下，
         # 但如果哪天 build_model 里的分支写反了，只有打印出来才看得见。
@@ -185,7 +207,15 @@ class Trainer:
                 self.model, self.train_loader, self.opt, self.crit,
                 self.device, flatten=cfg.flatten,
                 log=log if epoch == 1 else None,
+                stepper=self.stepper,
             )
+            # ── Day 26：评估**永远走 fp32** ────────────────────────
+            # 这不是漏了 amp，是刻意的：
+            # 训练用 fp16 算出来的权重，要用同一把尺子去量。
+            # 如果训练 fp16、评估也 fp16，那么"fp16 的 0.9917"和
+            # "fp32 的 0.9936" 就是两种仪器测出来的数，没法直接比 ——
+            # 而今天要回答的恰恰是"amp 影响不影响结果"。
+            # 评估只占一轮的 10% 左右，省这点时间不值。
             va_loss, va_acc = evaluate(
                 self.model, self.val_loader, self.crit, self.device, flatten=cfg.flatten
             )
@@ -303,6 +333,34 @@ class Trainer:
             },
             "final_wnorm": round(weight_norm(self.model), 6),
         }
+
+        # ── Day 26：amp 的收尾统计 ────────────────────────────────
+        # 这三个数只在实际开了 amp 时才写进 record。
+        # 为什么"跳过步数"值得记录：它是"scale 太大"的唯一直接读数。
+        # 如果跳过比例很高（>5%），说明那个 lr / 那个模型不适合 fp16，
+        # 训练有一半时间在原地踏步 —— 而这件事在 loss 曲线上看不出来。
+        if self.stepper is not None and self.stepper.enabled:
+            sc = self.stepper.scaler
+            record["amp"] = {
+                "dtype": str(self.stepper.dtype).replace("torch.", ""),
+                "grad_clip": cfg.grad_clip,
+                "steps": self.stepper.steps,
+                "skipped": self.stepper.skipped,
+                "skip_rate": round(self.stepper.skipped / max(self.stepper.steps, 1), 6),
+                "final_scale": sc.scale_value,
+                "scale_trace_len": len(getattr(sc, "history", [])),
+            }
+            log.info(
+                f"[amp] 总步数 {self.stepper.steps}  跳过 {self.stepper.skipped} 步 "
+                f"({self.stepper.skipped / max(self.stepper.steps, 1) * 100:.2f}%)  "
+                f"最终 scale={sc.scale_value:g}"
+            )
+            # scale 轨迹单独存一份，方便画图对比"手写 vs 官方"
+            trace = getattr(sc, "history", None)
+            if trace:
+                (self.out / "scale_trace.json").write_text(
+                    json.dumps(trace), encoding="utf-8"
+                )
         # history.json 就是"复现性"要对比的那个文件：
         # 同一个 seed 跑两次，这两个文件必须逐字节相同。
         # 所以它里面**只能放"确定性"的内容**。耗时绝对不能写进来。

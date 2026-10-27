@@ -45,6 +45,15 @@ ALLOWED_ES_METRICS = ("loss", "acc")
 ALLOWED_CONVS = ("torch", "my")
 # Day 25 新增：BatchNorm 实现。none = 不加，my = 手写 MyBatchNorm2d
 ALLOWED_BNS = ("none", "torch", "my")
+# Day 26 新增：混合精度。none = fp32，fp16 = autocast + GradScaler
+# 为什么不是 "amp: true" 而是枚举：以后要加 bf16 时，多一个取值就行，
+# 而 true/false 加第三态只能变成字符串，等于迟早要重构。
+ALLOWED_AMPS = ("none", "fp16")
+# Day 27 新增：数据后端。
+#   pil = torchvision 原样（__getitem__ 里绕一圈 PIL）
+#   u8  = 直接索引 uint8 张量，逐样本转（零额外内存，数值逐位相同）
+#   f32 = 启动时一次性转 float32 常驻（+179MB，再快 2.5 倍）
+ALLOWED_DATA_BACKENDS = ("pil", "u8", "f32")
 
 # ⚠️ 注意这里**没有** ALLOWED_MODELS / ALLOWED_DATASETS。
 # 那两张表在 src/engine/registry.py 里，由 builtin.py 注册填充。
@@ -130,6 +139,17 @@ class Config:
     val_size: int = 6000            # 从 60000 里切多少条当验证集
     num_workers: int = 0            # 读数据的子进程数（Windows 上先留 0）
 
+    # ── Day 27 新增：数据后端 ─────────────────────────────────────
+    # 为什么默认用 u8 而不是原样 pil：
+    # 实测 u8 与 pil **逐位相同**（差 0.00e+00，见 Day 27 关 1/关 3），
+    # 额外内存 0，速度快 2.74 倍。**没有任何取舍的改动，就不该留成可选项的默认关。**
+    #
+    # 要不要升到 f32：再快 2.5 倍（端到端 6.9x），代价是 179MB 常驻。
+    # 这个是有取舍的（内存 vs 时间），所以不设成默认，要的人自己开。
+    #
+    # 默认值跟着实测走 —— 和 amp 默认 none 是同一条原则的两个方向。
+    data_backend: str = "u8"
+
     # ── Day 13 新增：模型 ──────────────────────────────────────────
     hidden: int = 256               # 隐藏层宽度
     n_layers: int = 2               # 总层数（含输出层）
@@ -174,6 +194,19 @@ class Config:
     # "不加 BN" 本身也是一种实现，拆成两个字段会出现
     # enable=False 却 bn_impl="my" 这种自相矛盾的组合。
     bn: str = "none"
+
+    # ── Day 26 新增：混合精度 ─────────────────────────────────────
+    # none = 全程 fp32；fp16 = autocast(fp16) + GradScaler
+    # 默认 none：这台机器（GTX 1660 Ti，sm_75 的 TU116）实测 amp 比 fp32 **慢**
+    # 1.5~4 倍，详见 docs/Day26-混合精度.md。默认值应该跟着实测走，
+    # 不该跟着"amp 更快"这个流行说法走。
+    amp: str = "none"
+
+    # ── Day 26 新增：梯度裁剪 ──────────────────────────────────────
+    # 0 = 关闭。为什么今天才加：amp 的 unscale_ 必须在 clip **之前**，
+    # 没有 clip 就没法把这个坑讲清楚（Day 26 关 6）。
+    # 另外 P2 的 PPO 会强制用到梯度裁剪，这个字段那时候直接能用。
+    grad_clip: float = 0.0
 
     # ── Day 23 新增：数据增强（只作用于训练集）────────────────────
     # Day 22 的 CNN 在 ep7 之后 val_loss 回升 39%，是真过拟合。
@@ -308,6 +341,25 @@ class Config:
             )
         if self.in_channels < 1:
             raise ValueError(f"in_channels 必须 >= 1，你给的是 {self.in_channels}")
+
+        # ── Day 26 新增：amp 与梯度裁剪校验 ────────────────────────
+        if self.amp not in ALLOWED_AMPS:
+            raise ValueError(
+                f"amp 只能是 {ALLOWED_AMPS} 之一（none = 全程 fp32），"
+                f"你给的是 {self.amp!r}"
+            )
+        if self.grad_clip < 0:
+            raise ValueError(
+                f"grad_clip 不能为负（0 表示关闭），你给的是 {self.grad_clip}"
+            )
+        # amp 只在 cuda 上有意义。这里不拦，因为 Trainer 会自动降级并打印 ——
+        # 但要在配 yaml 时就让人看见：配了 amp 又配 device=cpu 是白配。
+        if self.amp != "none" and self.device == "cpu":
+            raise ValueError(
+                f"amp={self.amp!r} 需要 CUDA，但 device='cpu'。\n"
+                "  fp16 的 autocast 在 CPU 上走的是另一套实现（甚至可能更慢），"
+                "  不打算支持。要么把 device 改成 cuda，要么把 amp 改成 none。"
+            )
         # 在入口就把 channels 解析一次。解析不了 = 配置写错，当场报。
         # 好处是后面 build_cnn 拿到的一定是合法的两个正整数。
         parse_channels(self.channels)
@@ -327,6 +379,16 @@ class Config:
                 f"augment_angle 要在 [0, 180) 度内，你给的是 {self.augment_angle}"
                 "（单位是度，不是弧度）"
             )
+        # ── Day 27 新增：数据后端校验 ──────────────────────────────
+        if self.data_backend not in ALLOWED_DATA_BACKENDS:
+            raise ValueError(
+                f"data_backend 只能是 {ALLOWED_DATA_BACKENDS} 之一"
+                f"（pil = 原样走 PIL，u8/f32 = 直索引张量），"
+                f"你给的是 {self.data_backend!r}"
+            )
+        if self.num_workers < 0:
+            raise ValueError(f"num_workers 不能为负，你给的是 {self.num_workers}")
+
         # ─────────────────────────────────────────────────────────────
         # ─────────────────────────────────────────────────────────────
 
