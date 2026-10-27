@@ -9,11 +9,23 @@
 
 ## 一、这个仓库怎么用
 
-三条纪律，比任何技术细节都重要：
+四条纪律，比任何技术细节都重要：
 
 1. **每个算法自己手写一遍。** `stable-baselines3` 只用来做对照 baseline，不用来替代理解。
 2. **一次只引入一个新概念。** 同时改三处，出错时你无法归因。
 3. **曲线不好时，最后才怀疑超参数。** 先查环境 bug、数据、reward 定义。
+4. **写完一个模块就提交并 push，不要攒。** 见下。
+
+第 4 条是 `2026-10-27` 换来的：那天工作区被回滚到 10-23 的快照，
+本地 git 里 Day 17–21 的 6 个提交整个消失、reflog 里也没有。
+**因为之前 push 过，GitHub 上完好，`git fetch` + `merge --ff-only` 一步全恢复。**
+但当天未提交的代码和讲义（手写卷积、CNN、讲义、台账）全部要重写。
+
+两条结论：
+
+- **「本地有」≠「存下来了」。** 只有 push 到远端的提交才算。
+- **一个模块做完就 commit。** 第一版是「代码 + 讲义 + 台账一起做完再提交」，
+  一被回滚就全没了。改成做完一块提交一块，最多只丢一块。
 
 ---
 
@@ -22,8 +34,8 @@
 | 目录 | 用途 | 说明 |
 |---|---|---|
 | `src/engine/` | **训练引擎** | 注册表、Trainer、训练循环、命令行。**换模型/数据集只改这里** |
-| `src/utils/` | 工具模块 | 日志、路径、config、seed、**手写的优化器与损失函数与 Linear 层** |
-| `src/models/` | 模型定义 | `mlp.py` |
+| `src/utils/` | 工具模块 | 日志、路径、config、seed、**手写的优化器 / 损失函数 / Linear 层 / 卷积** |
+| `src/models/` | 模型定义 | `mlp.py` · `cnn.py` |
 | `src/data/` | 数据加载 | `mnist.py` |
 | `configs/` | 实验配置 | YAML 文件。超参写在配置里，不硬编码进代码 |
 | `scripts/` | 入口脚本 | 训练、对照实验、环境自检。**`check_env.py` 在这里** |
@@ -112,6 +124,9 @@ torch、算力等级、cuDNN、**真跑一次 fp16 矩阵乘**）、功能（aut
 **P0 已全部完成**：环境、配置系统、反向传播、训练循环、优化器、MNIST 端到端
 （test acc 98.00%）、过拟合与正则化、三个手写算子、通用训练模板。
 
+**P1 进行中**：Day 22 加了 CNN，MNIST 从 98.00% → **98.89%**
+（同参数量 20.7 万，差距来自结构而非容量），手写卷积七关对拍通过。
+
 ```powershell
 cd "E:\work Buddy\强化学习\rl-vla-journey"
 $PY = "E:\anaconda\envs\pytorch\python.exe"
@@ -129,12 +144,22 @@ $PY = "E:\anaconda\envs\pytorch\python.exe"
 & $PY src\utils\optim.py --train      # Day 12  优化器五关
 & $PY src\utils\losses.py --train     # Day 16  损失函数七关
 & $PY src\utils\layers.py --train     # Day 17  线性层七关
+& $PY src\utils\conv.py --train       # Day 22  卷积七关
+
+# ── 模型自测（结构 / 形状流 / 感受野）─────────────────────────
+& $PY src\models\mlp.py               # Day 10  MLP 三关
+& $PY src\models\cnn.py               # Day 22  CNN 自测
 
 # ── MNIST 训练 ───────────────────────────────────────────────
-& $PY scripts\train_mnist.py                              # 10 epoch，约 95 秒
+& $PY scripts\train_mnist.py                              # MLP 10 epoch，约 95 秒
 & $PY scripts\train_mnist.py --loss myce  --epochs 2      # 换手写损失函数
 & $PY scripts\train_mnist.py --linear my  --epochs 2      # 换手写 Linear 层
 & $PY scripts\train_mnist.py --dropout 0.2 --weight-decay 1e-4 --patience 3
+
+# ── CNN 训练（Day 22）────────────────────────────────────────
+& $PY scripts\train.py --config configs\cnn_mnist.yaml --tag cnn            # 98.89%
+& $PY scripts\train.py --config configs\cnn_mnist.yaml --set conv=my `
+      --tag cnn_myconv                                                     # 换手写卷积
 
 # ── 对照实验与教学脚本 ────────────────────────────────────────
 & $PY scripts\run_ablation.py --epochs 10   # 四组正则化对照（约 6 分钟）
@@ -161,7 +186,7 @@ $PY = "E:\anaconda\envs\pytorch\python.exe"
 `early_stop_metric` / `flatten` 类型 / `dropout` 范围等），**配错在读配置的
 那一刻就报错**，不会拖到训练第 1000 步才发现。
 
-**加一个新模型**（P1 会用到）：在 `src/engine/builtin.py` 里加
+**加一个新模型**（Day 22 已经真用过一次）：在 `src/engine/builtin.py` 里加
 
 ```python
 @register_model("cnn")
@@ -170,6 +195,14 @@ def build_cnn(cfg):
 ```
 
 然后在 yaml 里写 `model: cnn`。`trainer.py` / `cli.py` 一个字都不用改。
+
+这不是设想 —— Day 22 加 CNN 时的实测结果是：
+`grep -n cnn src/engine/trainer.py src/engine/cli.py` → **0 行命中**。
+甚至 `loops.py` 里那个 `flatten` 开关都是 Day 18 就留好的。
+
+> 一个细节：`registry.py` 里确实有 6 行提到 "cnn"，但**全在注释里**
+> （Day 18 写的「想换 CNN？→ 在 builtin.py 里加一行注册」）。
+> 所以「不影响行为」的判据是**代码行有没有变**，不是文件里有没有出现过这个词。
 
 ---
 
