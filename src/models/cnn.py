@@ -94,6 +94,12 @@ class CNN(nn.Module):
                   MNIST + 这个规模加正则化会让精度**下降**（Day 15），
                   默认 0.0 是有依据的，不是偷懒。
     conv_cls    : 卷积层的类。传 MyConv2d 就能换成手写实现（Day 22 关 7 验过）。
+    bn_cls      : BatchNorm 的类，**传 None 表示不加**（Day 25）。
+                  传 nn.BatchNorm2d 或手写 MyBatchNorm2d 都可以 ——
+                  两个签名是对齐的，这是 Day 17 的接口对齐原则。
+                  注意构造签名收的是「类」而不是「字符串」：
+                  「my / torch」这种字符串解析放在 builtin.py 里，
+                  因为模型层不该知道配置系统长什么样。
     """
 
     def __init__(
@@ -105,6 +111,7 @@ class CNN(nn.Module):
         dropout: float = 0.0,
         act: str = "relu",
         conv_cls: type[nn.Module] = nn.Conv2d,
+        bn_cls: type[nn.Module] | None = None,
         image_size: int = 28,
     ) -> None:
         super().__init__()
@@ -118,6 +125,7 @@ class CNN(nn.Module):
         self.hidden = hidden
         self.out_dim = out_dim
         self.image_size = image_size
+        self.has_bn = bn_cls is not None
         c1, c2 = channels
         act_cls = ACT_MAP[act]
 
@@ -125,12 +133,34 @@ class CNN(nn.Module):
         # padding=1 配 kernel=3 是 "same" 卷积：输出尺寸 == 输入尺寸。
         # 所以 conv 层不改尺寸，只有 pool 层把尺寸减半。
         # 这让尺寸链变得很好算：28 → pool → 14 → pool → 7。
-        self.conv1 = conv_cls(in_channels, c1, kernel_size=3, padding=1)
+        #
+        # Day 25：接 BN 时 conv 的 bias 要关掉。
+        # 不是"省参数"这种小事 —— 关 7 实测证明了它**完全不起作用**：
+        # BN 减的是逐通道均值，而 bias 就是逐通道常数，被原样减掉。
+        # 留着的话参数量对账会多算 C_out 个（16+32=48 个），
+        # 更重要的是会在 state_dict 里留下一批永远不更新的死参数。
+        conv_bias = bn_cls is None
+        self.conv1 = conv_cls(
+            in_channels, c1, kernel_size=3, padding=1, bias=conv_bias
+        )
         self.pool1 = nn.MaxPool2d(2)
-        self.conv2 = conv_cls(c1, c2, kernel_size=3, padding=1)
+        self.conv2 = conv_cls(c1, c2, kernel_size=3, padding=1, bias=conv_bias)
         self.pool2 = nn.MaxPool2d(2)
         self.act1 = act_cls()
         self.act2 = act_cls()
+
+        # ── BN（Day 25）────────────────────────────────────────────
+        # 顺序是 conv → BN → act，不是 conv → act → BN。
+        # 为什么：ReLU 会把负半轴全部压成 0，先激活再 BN 的话，
+        # 那个通道的分布被砍成"一半是 0"，标准化之后 0 的位置仍是 0，
+        # BN 想做的事（把分布拉回均值 0 方差 1）被 ReLU 破坏掉一半。
+        # 放 conv 之后、act 之前，BN 收到的是完整的高斯样分布，效果最好。
+        #
+        # 不加 BN 时用 Identity 占位，而不是 `if self.has_bn:` 分支 ——
+        # 这样 forward 只有一条代码路径，不会出现"加了 BN 却没走那条分支"
+        # 这种事，而且 print(model) 里能看到它的位置。
+        self.bn1 = bn_cls(c1) if bn_cls is not None else nn.Identity()
+        self.bn2 = bn_cls(c2) if bn_cls is not None else nn.Identity()
 
         # ── 展平后的尺寸 ──────────────────────────────────────────
         # 从 image_size 一路算下来，而不是写死 1568。
@@ -166,11 +196,13 @@ class CNN(nn.Module):
                 "  CNN 必须写 flatten: false —— 摊平以后空间结构就没了。"
             )
 
-        x = self.act1(self.conv1(x))        # (B, c1, 28, 28)
-        x = self.pool1(x)                   # (B, c1, 14, 14)
-        x = self.act2(self.conv2(x))        # (B, c2, 14, 14)
-        x = self.pool2(x)                   # (B, c2,  7,  7)
-        return self.head(x)                 # (B, out_dim)
+        # 顺序固定为 conv → BN → act（见 __init__ 里的说明）。
+        # bn1/bn2 在没加 BN 时是 Identity，这里不用分支 —— 一条路径。
+        x = self.act1(self.bn1(self.conv1(x)))   # (B, c1, 28, 28)
+        x = self.pool1(x)                        # (B, c1, 14, 14)
+        x = self.act2(self.bn2(self.conv2(x)))   # (B, c2, 14, 14)
+        x = self.pool2(x)                        # (B, c2,  7,  7)
+        return self.head(x)                      # (B, out_dim)
 
     def feature_maps(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         """把每一层的中间结果都返回，用来做可视化 / 排查。
@@ -183,11 +215,11 @@ class CNN(nn.Module):
         out: dict[str, torch.Tensor] = {}
         with torch.no_grad():
             out["input"] = x
-            h = self.act1(self.conv1(x))
+            h = self.act1(self.bn1(self.conv1(x)))
             out["conv1"] = h
             h = self.pool1(h)
             out["pool1"] = h
-            h = self.act2(self.conv2(h))
+            h = self.act2(self.bn2(self.conv2(h)))
             out["conv2"] = h
             h = self.pool2(h)
             out["pool2"] = h
@@ -204,6 +236,7 @@ def expected_params_cnn(
     hidden: int = 128,
     out_dim: int = 10,
     image_size: int = 28,
+    with_bn: bool = False,
 ) -> int:
     """按公式手算参数量，用来和 model.parameters() 对账。
 
@@ -216,13 +249,29 @@ def expected_params_cnn(
       卷积层少写一个 padding、通道数写错、池化层数变了，
       都**不会让训练崩**，只会让精度莫名地低一点。
       参数量对不上是唯一能立刻发现"结构不是我想要的"的信号。
+
+    ── Day 25：加了 BN 之后公式变了两处，方向相反 ─────────────────
+        conv 的 bias     +1  →  0      BN 把它抵消掉了（关 7 实测 1.8e-15）
+        BN 自己的参数     —  →  2·C   γ 和 β 各 C 个
+
+    所以一层 16 通道的 conv：
+        不带 BN   C_out·(C_in·9 + 1)
+        带 BN     C_out·(C_in·9 + 0) + 2·C_out
+    后者**多出 C_out 个参数**。这个方向值得记一下：
+    **BN 不是"省参数"的优化，是"多花一点参数换优化性质"。**
+
+    如果这里忘了改（照旧算 bias、又不算 γ/β），误差是
+    `48 − 96 = −48` 个（c1+c2=48，2·(c1+c2)=96），
+    对账会当场报出来 —— 这正是关 7 和这道检查配合的价值。
     """
     c1, c2 = channels
+    conv_bias = 0 if with_bn else 1     # 接 BN 时 conv 不建 bias
+    bn_per_ch = 2 if with_bn else 0     # γ 和 β，每个通道两个
     total = 0
     # conv1: in_channels → c1, kernel 3x3
-    total += c1 * (in_channels * 3 * 3 + 1)
+    total += c1 * (in_channels * 3 * 3 + conv_bias) + bn_per_ch * c1
     # conv2: c1 → c2, kernel 3x3
-    total += c2 * (c1 * 3 * 3 + 1)
+    total += c2 * (c1 * 3 * 3 + conv_bias) + bn_per_ch * c2
     # 两次 MaxPool2d(2) 后：image_size / 4
     feat = image_size // 4
     flat = c2 * feat * feat

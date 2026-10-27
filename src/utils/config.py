@@ -43,6 +43,8 @@ ALLOWED_LINEARS = ("torch", "my")
 ALLOWED_ES_METRICS = ("loss", "acc")
 # Day 22 新增：卷积层实现。my = 手写 MyConv2d（src/utils/conv.py，七关对拍通过）
 ALLOWED_CONVS = ("torch", "my")
+# Day 25 新增：BatchNorm 实现。none = 不加，my = 手写 MyBatchNorm2d
+ALLOWED_BNS = ("none", "torch", "my")
 
 # ⚠️ 注意这里**没有** ALLOWED_MODELS / ALLOWED_DATASETS。
 # 那两张表在 src/engine/registry.py 里，由 builtin.py 注册填充。
@@ -164,6 +166,14 @@ class Config:
     # torch = nn.Conv2d
     # my    = 手写 MyConv2d（Day 22 七关对拍通过，30 步参数差 2.98e-08）
     conv: str = "torch"
+    # ── Day 25 新增：BatchNorm ─────────────────────────────────────
+    # none  = 不加
+    # torch = nn.BatchNorm2d
+    # my    = 手写 MyBatchNorm2d（Day 25 七关对拍通过）
+    # 三个取值合成一个字段而不是「开关 + 实现」两个字段：
+    # "不加 BN" 本身也是一种实现，拆成两个字段会出现
+    # enable=False 却 bn_impl="my" 这种自相矛盾的组合。
+    bn: str = "none"
 
     # ── Day 23 新增：数据增强（只作用于训练集）────────────────────
     # Day 22 的 CNN 在 ep7 之后 val_loss 回升 39%，是真过拟合。
@@ -279,6 +289,22 @@ class Config:
         if self.conv not in ALLOWED_CONVS:
             raise ValueError(
                 f"conv 只能是 {ALLOWED_CONVS} 之一（my = 手写版），你给的是 {self.conv!r}"
+            )
+        # ── Day 25 新增：BN 校验 ──────────────────────────────────
+        if self.bn not in ALLOWED_BNS:
+            raise ValueError(
+                f"bn 只能是 {ALLOWED_BNS} 之一"
+                f"（none = 不加，my = 手写版），你给的是 {self.bn!r}"
+            )
+        # BN 只对 CNN 有效。MLP 上加 BN2d 会在第一次 forward 报"需要 4 维输入"，
+        # 但那个报错发生在第 0 秒之后、而且信息指向形状而不是配置 ——
+        # 在这里拦一下，报错直接说"你给 mlp 配了 bn"。
+        if self.bn != "none" and self.model != "cnn":
+            raise ValueError(
+                f"bn={self.bn!r} 只能配 model='cnn'（BatchNorm2d 需要 4 维输入），"
+                f"当前 model={self.model!r}。\n"
+                "  如果确实想在 MLP 上加归一化，那应该用 BatchNorm1d，"
+                "  目前没有实现，不要用 bn 字段凑。"
             )
         if self.in_channels < 1:
             raise ValueError(f"in_channels 必须 >= 1，你给的是 {self.in_channels}")

@@ -129,6 +129,19 @@ def build_cnn(cfg) -> nn.Module:
         from src.utils.conv import MyConv2d
         conv_cls = MyConv2d
 
+    # ── Day 25：BN 的实现选择 ────────────────────────────────────
+    # cfg.bn 是字符串（none / torch / my），在这里翻译成"类或 None"。
+    # 为什么翻译放在 builtin 而不是 CNN 里：
+    # 模型层不该知道配置系统的词表。CNN 只收一个类，收到 None 就不加 ——
+    # 于是 CNN 可以被单独 import 用（比如在 notebook 里）而不需要 Config。
+    bn_cls = None
+    if cfg.bn == "torch":
+        bn_cls = nn.BatchNorm2d
+    elif cfg.bn == "my":
+        # 延迟 import，和上面 conv 一样的理由
+        from src.utils.batchnorm import MyBatchNorm2d
+        bn_cls = MyBatchNorm2d
+
     channels = parse_channels(cfg.channels)
     model = CNN(
         in_channels=cfg.in_channels,
@@ -138,23 +151,33 @@ def build_cnn(cfg) -> nn.Module:
         dropout=cfg.dropout,
         act=cfg.act,
         conv_cls=conv_cls,
+        bn_cls=bn_cls,
     )
 
     # ── 参数量对账（和 MLP 同一个套路，公式换成卷积的）────────────
     # CNN 的参数量算法和 MLP 完全不同（卷积层是 C_out·(C_in·kh·kw+1)），
     # 所以这段检查**必须写在 build_cnn 里**，不能提到 Trainer 去。
     # 这正是 Day 18 定的规矩：模型自己负责自己的自检。
+    #
+    # Day 25：with_bn=True 时公式有**两处**变化，而且方向相反 ——
+    # conv 不再有 bias（被 BN 抵消，关 7 实测），但多了 γ/β。
+    # 净效果是 +48 个（= c1+c2，即省下的 48 个 bias 被 96 个 γ/β 顶掉还多 48）。
+    # 如果这里忘了传 with_bn，手算会少 48 个，当场报出来。
     actual = sum(p.numel() for p in model.parameters())
     manual = expected_params_cnn(
         in_channels=cfg.in_channels,
         channels=channels,
         hidden=cfg.hidden,
         out_dim=NUM_CLASSES,
+        with_bn=bn_cls is not None,
     )
     assert actual == manual, (
         f"CNN 参数量对不上：运行时 {actual} vs 手算 {manual}（差 {actual - manual}）\n"
-        f"  配置：in_channels={cfg.in_channels} channels={channels} hidden={cfg.hidden}\n"
-        "  常见原因：池化层数改了但公式没跟着改、channels 解析成了别的值"
+        f"  配置：in_channels={cfg.in_channels} channels={channels} "
+        f"hidden={cfg.hidden} bn={cfg.bn}\n"
+        "  常见原因：池化层数改了但公式没跟着改、channels 解析成了别的值、\n"
+        "           加了 BN 但没关 conv 的 bias（或者 expected_params_cnn "
+        "忘了算 γ/β）"
     )
 
     # ── 一个只有 CNN 才会犯的配置错误，在这里拦掉 ─────────────────
