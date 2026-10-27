@@ -15,6 +15,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import datasets, transforms
 
+from src.data.augment import AugmentedDataset
 from src.utils.seed import make_generator
 
 # ── 数据集的固定形状 ─────────────────────────────────────────────────
@@ -102,6 +103,28 @@ def build_loaders(cfg) -> tuple[DataLoader, DataLoader, DataLoader]:
     没有坏处，但会造成一种误解：以为"传了 generator 就 reproducible 了"。
     """
     train_set, val_set, test_set = build_datasets(cfg)
+
+    # ── Day 23：数据增强只挂在训练集上 ─────────────────────────────
+    # 这一段的**位置**就是全部重点：包装发生在 train_set 上，
+    # val_set / test_set 原样返回，一个字都不碰。
+    #
+    # 为什么这么较真：一旦给验证集也加了随机变换，val_loss 会变成
+    # "一个随机变量的实现"，同一个模型的两次评估能差出好几个百分点。
+    # 早停靠 val_loss 判断"有没有变好"，而测量本身带随机噪声时，
+    # 早停就会在随机抖动上触发 —— 你会得到一个完全无法复现的停止点。
+    # Day 15 已经吃过一次"判据选错导致结论相反"的亏，这次直接从结构上杜绝。
+    shift = float(cfg.augment_shift)
+    angle = float(cfg.augment_angle)
+    if shift > 0 or angle > 0:
+        # 上界校验要结合图像边长，所以放在这里而不是 config 里 ——
+        # config 不该知道 MNIST 是 28×28，换个数据集（如 CIFAR 32×32）就变。
+        if shift >= IMAGE_SIZE / 2:
+            raise ValueError(
+                f"augment_shift={shift} 太大了：图只有 {IMAGE_SIZE}×{IMAGE_SIZE}，"
+                f"平移超过 {IMAGE_SIZE // 2} 像素会把内容整个推出画面，"
+                "增强出来的图基本全黑，模型学不到东西还不报错。"
+            )
+        train_set = AugmentedDataset(train_set, shift, angle, seed=cfg.seed)
 
     train_loader = DataLoader(
         train_set,
