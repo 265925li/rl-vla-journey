@@ -36,7 +36,7 @@
 | `src/engine/` | **训练引擎** | 注册表、Trainer、训练循环、命令行。**换模型/数据集只改这里** |
 | `src/utils/` | 工具模块 | 日志、路径、config、seed、**手写的优化器 / 损失函数 / Linear 层 / 卷积** |
 | `src/models/` | 模型定义 | `mlp.py` · `cnn.py` |
-| `src/data/` | 数据加载与增强 | `mnist.py` · `augment.py`（**手写的仿射增强**，Day 23） |
+| `src/data/` | 数据加载与增强 | `mnist.py` · `augment.py`（**手写的仿射增强**，Day 23）· `batch_aug.py`（**整批增强，collate 层**，Day 24） |
 | `configs/` | 实验配置 | YAML 文件。超参写在配置里，不硬编码进代码 |
 | `scripts/` | 入口脚本 | 训练、对照实验、环境自检。**`check_env.py` 在这里** |
 | `notebooks/` | 探索性代码 | **正式代码不许放这里**。只用来快速验证想法 |
@@ -150,9 +150,10 @@ $PY = "E:\anaconda\envs\pytorch\python.exe"
 & $PY src\models\mlp.py               # Day 10  MLP 三关
 & $PY src\models\cnn.py               # Day 22  CNN 自测
 
-# ── 数据增强（Day 23）────────────────────────────────────────
-& $PY src\data\augment.py --train     # 增强七关（含真 MNIST 统计对拍）
-& $PY scripts\sweep_augment.py        # 5 组剂量扫描 + 早停离线分析（约 35 分钟）
+# ── 数据增强（Day 23 / 24）───────────────────────────────────
+& $PY src\data\augment.py --train      # 增强七关（含真 MNIST 统计对拍）
+& $PY src\data\batch_aug.py --train    # 整批增强六关（含与逐样本的逐位对拍）
+& $PY scripts\sweep_augment.py         # 5 组剂量扫描 + 早停离线分析（约 35 分钟）
 & $PY scripts\sweep_augment.py --epochs 3 --only 0,3   # 先试水
 
 # ── MNIST 训练 ───────────────────────────────────────────────
@@ -166,8 +167,10 @@ $PY = "E:\anaconda\envs\pytorch\python.exe"
 & $PY scripts\train.py --config configs\cnn_mnist.yaml --set conv=my `
       --tag cnn_myconv                                                     # 换手写卷积
 
-# ── 加数据增强（Day 23）──────────────────────────────────────
-& $PY scripts\train.py --config configs\cnn_aug.yaml --tag cnn_aug          # 99.15%
+# ── 加数据增强（Day 23，25 轮成绩见 Day 24）───────────────────
+& $PY scripts\train.py --config configs\cnn_aug.yaml --tag cnn_aug          # 15 轮 99.15%
+& $PY scripts\train.py --config configs\cnn_aug.yaml --epochs 25 `
+      --tag cnn_aug25                                                     # 25 轮 99.36%
 & $PY scripts\train.py --config configs\cnn_mnist.yaml `
       --set augment_shift=2 --set augment_angle=10 --epochs 15
 
