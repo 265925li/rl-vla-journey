@@ -435,6 +435,34 @@ class MyBatchNorm2d(nn.Module):
                 mean_flat = mean.reshape(-1)
                 var_flat = var.reshape(-1)
 
+                # ⚠️⚠️ 关键不一致：**标准化用 biased，但 running_var 存 unbiased**
+                #
+                # 这是 PyTorch 里一个非常有名的坑，而且文档只在夹缝里提了一句：
+                #   「the running variance is computed using the unbiased
+                #     variance estimate (i.e. using torch.var(input,
+                #     unbiased=True))」
+                #
+                # 也就是说同一个 BN 层里有两个方差：
+                #   标准化时  σ²_biased   = (1/m)Σ(x−μ)²        ← 除以 m
+                #   存起来时  σ²_unbiased = (1/(m−1))Σ(x−μ)²    ← 除以 m−1
+                #   两者差一个 m/(m−1) 的因子。
+                #
+                # 为什么这么设计（合理的部分）：
+                #   running_var 是给推理用的，那时代替的是"总体方差"，
+                #   总体方差的无偏估计该用 m−1。
+                #   而训练时标准化用的是"这一批的描述性统计量"，除以 m 才是定义。
+                #
+                # 为什么容易错（我第一版就错了）：
+                #   两者都对，但用错地方**不报错**。后果是推理时的分母
+                #   系统性偏小 m/(m−1) —— m=6272 时只有 0.016%，几乎看不出来；
+                #   但 MLP 里 m=128 时是 0.8%，已经能影响结论。
+                #   探针实测：m=256 时差 1.68e-03（相对 0.39%）。
+                n_per_channel = x.shape[0] * x.shape[2] * x.shape[3]
+                if n_per_channel > 1:
+                    var_flat = var_flat * (n_per_channel / (n_per_channel - 1))
+                # m=1 时 unbiased 方差无定义（除零）。这种情况本来就没有信息，
+                # 保持 biased（=0）即可，不要制造出 inf 把 running_var 污染成 nan。
+
                 # 数学（PyTorch 语义）：
                 #   new = (1−momentum)·old + momentum·batch
                 #
@@ -844,7 +872,45 @@ def gate5_running_stats() -> bool:
     print(f"    手算：1.0 → 0.9 → 0.81 → 0.729，实际末值 {bn.running_var[0].item():.6f}")
     d_var = abs(v_manual - bn.running_var[0].item())
 
-    ok = worst < 1e-9 and d_var < 1e-9
+    # ── 补充：running_var 存的是 unbiased 方差（除 m−1），不是 biased ──
+    #
+    # 这一段是后来补的，因为上面那个常数批**抓不到这个 bug**：
+    # 常数批的方差恒为 0，除以 m 还是 m−1 都是 0，两种写法结果一样。
+    # 我第一版就是这么写的（用 biased），七关全过，但和官方实现对不上。
+    # 是后来跑真实训练、发现手写 BN 与官方 BN 的 test acc 差 2 个标准误，
+    # 写探针才查出来。
+    #
+    # 教训：**关卡用特殊数据（常数、全零、单位阵）时，
+    # 它测不到的性质会被悄悄放过。** 特殊数据用来验"简单性质"很好，
+    # 但不能代替"随机数据 + 对拍官方实现"。
+    bn_u = MyBatchNorm2d(1, momentum=0.1).double()
+    bn_u.train()
+    x_u = torch.randn(2, 1, 3, 3, dtype=torch.float64)     # m = 2·3·3 = 18
+    bn_u(x_u)
+    m_u = 2 * 3 * 3
+    var_b = x_u.var(dim=(0, 2, 3), unbiased=False).item()
+    var_un = x_u.var(dim=(0, 2, 3), unbiased=True).item()
+    expect_biased = 0.9 * 1.0 + 0.1 * var_b
+    expect_unbiased = 0.9 * 1.0 + 0.1 * var_un
+    got_u = bn_u.running_var[0].item()
+
+    print(f"\n    running_var 用哪个方差（m={m_u}，m/(m−1)={m_u/(m_u-1):.6f}）：")
+    print(f"      biased   {var_b:.8f}  → 期望 running_var {expect_biased:.8f}")
+    print(f"      unbiased {var_un:.8f}  → 期望 running_var {expect_unbiased:.8f}")
+    print(f"      实测                        {got_u:.8f}")
+    d_u = abs(got_u - expect_unbiased)
+    print(f"      vs unbiased 差 {d_u:.2e}，vs biased 差 {abs(got_u-expect_biased):.2e}")
+    print("      → PyTorch 用 **unbiased**。标准化用 biased，存起来用 unbiased，")
+    print("        这是它内部一个知名的不一致（文档只在夹缝里提了一句）")
+
+    # 再直接和官方实现比一次，这才是最硬的
+    bn_ref = nn.BatchNorm2d(1, momentum=0.1).double()
+    bn_ref.train()
+    bn_ref(x_u)
+    d_ref = abs(bn_ref.running_var[0].item() - got_u)
+    print(f"      与 nn.BatchNorm2d 的直接差 {d_ref:.2e}")
+
+    ok = worst < 1e-9 and d_var < 1e-9 and d_u < 1e-9 and d_ref < 1e-9
     assert ok, f"running stats 对不上：mean 最大差 {worst:.3e}，var 差 {d_var:.3e}"
     print("    ✓ 通过")
     return True
