@@ -36,7 +36,7 @@
 | `src/engine/` | **训练引擎** | 注册表、Trainer、训练循环、命令行。**换模型/数据集只改这里** |
 | `src/utils/` | 工具模块 | 日志、路径、config、seed、**手写的优化器 / 损失函数 / Linear / 卷积 / BatchNorm** |
 | `src/models/` | 模型定义 | `mlp.py` · `cnn.py`（`bn=none/torch/my`） |
-| `src/data/` | 数据加载与增强 | `mnist.py` · `augment.py`（**手写的仿射增强**，Day 23）· `batch_aug.py`（**整批增强，collate 层**，Day 24） |
+| `src/data/` | 数据加载与增强 | `mnist.py` · `augment.py`（**手写的仿射增强**，Day 23）· `batch_aug.py`（**整批增强，collate 层**，Day 24）· `fast_mnist.py`（**张量后端，pil/u8/f32**，Day 27） |
 | `configs/` | 实验配置 | YAML 文件。超参写在配置里，不硬编码进代码 |
 | `scripts/` | 入口脚本 | 训练、对照实验、环境自检。**`check_env.py` 在这里** |
 | `notebooks/` | 探索性代码 | **正式代码不许放这里**。只用来快速验证想法 |
@@ -124,9 +124,18 @@ torch、算力等级、cuDNN、**真跑一次 fp16 矩阵乘**）、功能（aut
 **P0 已全部完成**：环境、配置系统、反向传播、训练循环、优化器、MNIST 端到端
 （test acc 98.00%）、过拟合与正则化、三个手写算子、通用训练模板。
 
-**P1 进行中**（Day 22–25 完成）：CNN 0.9889 → 增强 25 轮 **0.9936** → BatchNorm 七关对拍通过。
-BN 在 MNIST 上**测不出精度提升**（t=1.57），但收敛快 2 倍（ep1 val_loss −41%）、
-过拟合收窄 78%（gap +0.27→+0.06pt）。
+**P1 进行中**（Day 22–28 完成，W4 已收口）：
+
+| Day | 手段 | 实测结论 |
+|---|---|---|
+| 22–24 | CNN → 增强 | 98.89% → 增强 25 轮 **99.36%**（2.82 SE，站得住） |
+| 25 | BatchNorm | 精度**测不出提升**（t=1.57）；收敛快 2 倍、gap 收窄 78% |
+| 26 | 混合精度 amp | 六关全过，但本机**全程更慢**（1.56x~4.15x）；省显存 25%~52% 是真的 |
+| 27 | 数据后端 | PIL 往返换张量索引，端到端 **3.74x**，18 个数值 **0 个不同** |
+| 28 | `train_step` 盲写 | 骨架 + 四关，参考实现 4/4、漏 `zero_grad` 2/4 |
+
+> 四个"提速/提分"手段里只有一个真的加速了 —— 而它恰好是最不高级的那个。
+> 详见 [`docs/Day28`](docs/Day28-W4收口与盲写.md) §9.4。
 
 ```powershell
 cd "E:\work Buddy\强化学习\rl-vla-journey"
@@ -147,6 +156,7 @@ $PY = "E:\anaconda\envs\pytorch\python.exe"
 & $PY src\utils\layers.py --train     # Day 17  线性层七关
 & $PY src\utils\conv.py --train       # Day 22  卷积七关
 & $PY src\utils\batchnorm.py --train  # Day 25  BatchNorm 七关
+& $PY src\utils\amp_scaler.py --train # Day 26  混合精度六关（含 unscale/clip 顺序）
 
 # ── 模型自测（结构 / 形状流 / 感受野）─────────────────────────
 & $PY src\models\mlp.py               # Day 10  MLP 三关
@@ -155,6 +165,7 @@ $PY = "E:\anaconda\envs\pytorch\python.exe"
 # ── 数据增强（Day 23 / 24）───────────────────────────────────
 & $PY src\data\augment.py --train      # 增强七关（含真 MNIST 统计对拍）
 & $PY src\data\batch_aug.py --train    # 整批增强六关（含与逐样本的逐位对拍）
+& $PY src\data\fast_mnist.py --train  # Day 27  数据后端六关（pil/u8/f32 逐位相同）
 & $PY scripts\sweep_augment.py         # 5 组剂量扫描 + 早停离线分析（约 35 分钟）
 & $PY scripts\sweep_augment.py --epochs 3 --only 0,3   # 先试水
 
@@ -185,6 +196,24 @@ $PY = "E:\anaconda\envs\pytorch\python.exe"
       # 换手写 BatchNorm（七关对拍通过）
 & $PY scripts\train.py --config configs\cnn_bn.yaml --set bn=none --tag no_bn
       # 关掉 BN 做对照
+
+# ── 混合精度（Day 26）────────────────────────────────────────
+& $PY scripts\train.py --config configs\cnn_amp.yaml --tag cnn_amp
+      # 与 cnn_bn.yaml 只差两行：amp: fp16 + grad_clip: 1.0
+& $PY scripts\train.py --config configs\cnn_bn.yaml --tag cnn_amp_off
+      # 对照：amp 默认 none，本机更快（见 Day26 §7.2）
+& $PY scripts\bench_amp.py            # 扫 5 个 batch size 测"值不值"（先测再写）
+
+# ── 数据后端（Day 27）────────────────────────────────────────
+& $PY scripts\train.py --config configs\cnn_bn.yaml --set data_backend=pil --tag db_pil
+& $PY scripts\train.py --config configs\cnn_bn.yaml --tag db_u8      # 默认，约 2.3x
+& $PY scripts\train.py --config configs\cnn_bn.yaml --set data_backend=f32 --tag db_f32
+      # 约 3.7x，代价 +179MB
+& $PY scripts\bench_data.py           # 三张表：数据侧拆解 / 后端阶梯 / num_workers 总账
+
+# ── 盲写 train_step（Day 28）─────────────────────────────────
+& $PY scripts\blind_train_step.py     # 只填空 train_step，四关判对错
+      # 前置：删掉函数体里 `todo = False` + `assert todo` 那四行，写你自己的实现
 
 # ── 对照实验与教学脚本 ────────────────────────────────────────
 & $PY scripts\run_ablation.py --epochs 10   # 四组正则化对照（约 6 分钟）
