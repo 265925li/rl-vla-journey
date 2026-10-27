@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>强化学习 & VLA 入门学习路线图</title>
+<style>
+  :root{
+    --bg:#f5f6f8;
+    --card:#ffffff;
+    --text:#1f2430;
+    --muted:#6b7280;
+    --border:#e5e7eb;
+    --accent:#3b5bdb;
+    --accent-soft:#eef1fd;
+    --p0:#3b5bdb; --p1:#0e9f6e; --p2:#d97706;
+    --p3:#7048e8; --p4:#0891b2; --p5:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:"PingFang SC","Microsoft YaHei","Hiragino Sans GB","Segoe UI",system-ui,sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.75;
+    -webkit-font-smoothing:antialiased;padding:0 0 80px;
+  }
+  .wrap{max-width:960px;margin:0 auto;padding:0 24px;}
+
+  /* ---------- Hero ---------- */
+  .hero{padding:56px 0 32px;}
+  .hero h1{font-size:34px;font-weight:800;letter-spacing:-.5px;line-height:1.3;}
+  .hero h1 span{color:var(--accent);}
+  .hero p.sub{margin-top:12px;color:var(--muted);font-size:15px;}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px;}
+  .chip{
+    background:#fff;border:1px solid var(--border);border-radius:999px;
+    padding:5px 14px;font-size:13px;color:#374151;font-weight:500;
+  }
+  .chip b{color:var(--accent);}
+
+  /* ---------- Progress ---------- */
+  .progress-box{
+    position:sticky;top:0;z-index:20;
+    background:rgba(255,255,255,.92);backdrop-filter:blur(10px);
+    border:1px solid var(--border);border-radius:14px;
+    padding:14px 18px;margin:8px 0 32px;
+    box-shadow:0 2px 12px rgba(15,23,42,.05);
+  }
+  .progress-head{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--muted);margin-bottom:8px;}
+  .progress-head b{font-size:15px;color:var(--text);}
+  .bar{height:8px;background:#eceef2;border-radius:99px;overflow:hidden;}
+  .bar i{display:block;height:100%;width:0%;border-radius:99px;
+    background:linear-gradient(90deg,#3b5bdb,#7048e8);transition:width .35s ease;}
+
+  /* ---------- Strategy ---------- */
+  .callout{
+    background:var(--accent-soft);border:1px solid #dbe2fb;border-radius:16px;
+    padding:22px 24px;margin-bottom:40px;
+  }
+  .callout h3{font-size:15px;font-weight:700;color:var(--accent);margin-bottom:10px;letter-spacing:.2px;}
+  .callout p{font-size:14.5px;color:#334155;}
+  .callout p+p{margin-top:8px;}
+  .callout em{font-style:normal;font-weight:700;color:#1e293b;background:#fff;padding:1px 6px;border-radius:5px;}
+
+  /* ---------- Section ---------- */
+  h2.sec{font-size:20px;font-weight:800;margin:48px 0 6px;letter-spacing:-.2px;}
+  h2.sec:first-of-type{margin-top:0;}
+  .sec-desc{color:var(--muted);font-size:14px;margin-bottom:22px;}
+
+  /* ---------- Phase card ---------- */
+  .phase{
+    background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:22px 24px;margin-bottom:16px;position:relative;overflow:hidden;
+    box-shadow:0 1px 3px rgba(15,23,42,.04);
+  }
+  .phase::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--c);}
+  .phase-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px;}
+  .tag{
+    font-size:12px;font-weight:700;letter-spacing:.4px;color:#fff;background:var(--c);
+    padding:3px 10px;border-radius:6px;
+  }
+  .phase-head h3{font-size:17.5px;font-weight:750;letter-spacing:-.2px;}
+  .wk{font-size:12.5px;color:var(--muted);font-weight:600;margin-left:auto;font-variant-numeric:tabular-nums;}
+  .phase .goal{font-size:13.5px;color:var(--muted);margin:6px 0 16px;padding-bottom:14px;border-bottom:1px dashed var(--border);}
+  .phase .goal b{color:var(--c);}
+
+  .label{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.6px;text-transform:uppercase;margin:14px 0 8px;}
+  .label:first-of-type{margin-top:0;}
+
+  ul.topics{list-style:none;}
+  ul.topics li{font-size:14.3px;padding-left:18px;position:relative;margin-bottom:3px;color:#374151;}
+  ul.topics li::before{content:"";position:absolute;left:2px;top:11px;width:5px;height:5px;border-radius:50%;background:var(--c);opacity:.6;}
+  ul.topics li b{color:#1e293b;font-weight:700;}
+
+  ul.tasks{list-style:none;}
+  ul.tasks li{margin-bottom:7px;}
+  ul.tasks label{display:flex;gap:10px;align-items:flex-start;cursor:pointer;font-size:14.3px;color:#374151;}
+  ul.tasks input{appearance:none;width:17px;height:17px;flex:0 0 17px;margin-top:5px;
+    border:1.5px solid #cbd5e1;border-radius:5px;background:#fff;cursor:pointer;transition:all .15s;position:relative;}
+  ul.tasks input:checked{background:var(--c);border-color:var(--c);}
+  ul.tasks input:checked::after{content:"";position:absolute;left:5px;top:1.5px;width:5px;height:9px;
+    border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);}
+  ul.tasks input:checked+span{text-decoration:line-through;color:#9ca3af;}
+  ul.tasks li.key label{font-weight:650;}
+  ul.tasks li.key label::after{content:"核心";font-size:10.5px;font-weight:700;color:var(--c);
+    background:var(--accent-soft);padding:1px 7px;border-radius:5px;margin-left:2px;flex:0 0 auto;margin-top:4px;}
+
+  .accept{margin-top:16px;background:#f8fafc;border-left:3px solid var(--c);border-radius:0 8px 8px 0;
+    padding:11px 14px;font-size:13.6px;color:#475569;}
+  .accept b{color:var(--c);}
+
+  /* ---------- Decision ---------- */
+  .decision{
+    background:#fffbeb;border:1.5px dashed #f0b429;border-radius:16px;padding:20px 24px;margin:16px 0 28px;
+  }
+  .decision h4{font-size:15.5px;font-weight:800;color:#92400e;margin-bottom:10px;}
+  .decision p{font-size:14.2px;color:#57534e;}
+  .decision .opts{display:grid;gap:9px;margin:14px 0 12px;}
+  .decision .opt{background:#fff;border:1px solid #fde68a;border-radius:10px;padding:11px 14px;font-size:14px;}
+  .decision .opt b{color:#b45309;display:block;margin-bottom:2px;font-size:13.6px;}
+  .decision .opt span{color:#57534e;font-size:13.6px;}
+  .decision .hint{font-size:13.4px;color:#78350f;background:#fef3c7;border-radius:8px;padding:9px 12px;margin-top:10px;}
+  .decision .hint b{color:#92400e;}
+
+  /* ---------- Table ---------- */
+  table{width:100%;border-collapse:collapse;background:#fff;font-size:13.8px;
+    border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+  th{background:#f1f3f7;text-align:left;padding:11px 16px;font-weight:700;font-size:13px;color:#475569;}
+  td{padding:11px 16px;border-top:1px solid var(--border);color:#374151;vertical-align:top;}
+  td:first-child{font-weight:650;color:#1e293b;white-space:nowrap;}
+  td code{background:#f1f3f7;padding:1px 6px;border-radius:5px;font-size:12.5px;color:#b91c1c;}
+
+  /* ---------- Pitfalls ---------- */
+  ol.pit{counter-reset:p;list-style:none;}
+  ol.pit li{counter-increment:p;position:relative;padding-left:38px;margin-bottom:11px;font-size:14.3px;color:#374151;}
+  ol.pit li::before{content:counter(p);position:absolute;left:0;top:1px;width:24px;height:24px;
+    background:#fee2e2;color:#b91c1c;border-radius:7px;font-size:12.5px;font-weight:800;
+    display:flex;align-items:center;justify-content:center;}
+  ol.pit li b{color:#1e293b;}
+
+  /* ---------- Resources ---------- */
+  .res-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;}
+  .res{background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px 18px;}
+  .res h5{font-size:13.5px;font-weight:750;color:var(--accent);margin-bottom:9px;letter-spacing:.2px;}
+  .res ul{list-style:none;}
+  .res li{font-size:13.6px;color:#374151;padding-left:14px;position:relative;margin-bottom:5px;line-height:1.6;}
+  .res li::before{content:"›";position:absolute;left:0;color:#94a3b8;font-weight:700;}
+  .res li b{color:#1e293b;}
+
+  .foot{margin-top:52px;text-align:center;font-size:13px;color:#94a3b8;padding-top:24px;border-top:1px solid var(--border);}
+
+  /* ---------- Hardware ---------- */
+  .hw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:20px;}
+  .hw{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px;}
+  .hw .k{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.3px;}
+  .hw .v{font-size:16px;font-weight:750;color:#1e293b;margin:3px 0 4px;letter-spacing:-.2px;}
+  .hw .n{font-size:12.5px;color:#64748b;line-height:1.55;}
+  .hw.warn{border-color:#fca5a5;background:#fef2f2;}
+  .hw.warn .v{color:#b91c1c;}
+  .bdg{display:inline-block;font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:5px;
+       background:#dcfce7;color:#15803d;white-space:nowrap;}
+  .bdg.no{background:#fee2e2;color:#b91c1c;}
+  .bdg.mid{background:#fef3c7;color:#a16207;}
+  .alert{border-left:3px solid #ef4444;background:#fef2f2;border-radius:0 10px 10px 0;
+    padding:14px 18px;margin:18px 0;font-size:14px;color:#7f1d1d;}
+  .alert b{color:#991b1b;}
+  .alert ol{margin:8px 0 0 18px;}
+  .alert li{margin-bottom:6px;}
+  code{background:#f1f3f7;padding:1px 6px;border-radius:5px;font-size:12.5px;color:#b91c1c;
+       font-family:ui-monospace,Consolas,"Courier New",monospace;}
+
+  @media(max-width:640px){
+    .hero h1{font-size:26px;} .hero{padding:34px 0 20px;}
+    .wk{margin-left:0;width:100%;}
+    .decision .opts{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <h1>强化学习 &amp; VLA<br><span>入门学习路线图</span></h1>
+    <p class="sub">26 周 · 约 6 个月 · 累计 550–700 小时 · 从零到有作品</p>
+    <div class="chips">
+      <span class="chip">每周 <b>20–30h</b></span>
+      <span class="chip">数学 <b>强</b> · 编程 <b>弱</b></span>
+      <span class="chip">GTX 1660 Ti · <b>6GB</b> · sm_75</span>
+      <span class="chip">目标：<b>广泛探索找方向</b></span>
+    </div>
+  </div>
+
+  <div class="progress-box">
+    <div class="progress-head">
+      <span>学习进度（自动保存到本机）</span>
+      <span><b id="pct">0%</b> · <span id="cnt">0 / 0 项</span></span>
+    </div>
+    <div class="bar"><i id="fill"></i></div>
+  </div>
+
+  <div class="callout">
+    <h3>总体设计思路</h3>
+    <p>你的情况有一个关键错配：<em>理论不会卡你，代码会卡死你</em>。数学强的同学学 RL 最常掉的坑是——公式全懂、能讲 PPT，但代码跑不起来，于是永远停在"看懂"层面。</p>
+    <p>所以这份计划和通用路线图有三点不同：<b>①</b> 前 3 周不碰 RL，只补工程；<b>②</b> 每个算法必须手写一遍，调包库只做对照 baseline；<b>③</b> 每 6 周设一个显式的方向决策点。</p>
+    <p>三条并行主线：<em>理论线</em>（优势区，快推不恋战）· <em>代码线</em>（瓶颈，慢嚼写透）· <em>论文线</em>（W6 起每周 1–2 篇）。</p>
+  </div>
+
+  <h2 class="sec">阶段路线</h2>
+  <p class="sec-desc">点击方框勾选，进度会自动保存。任何一阶段验收未通过，不要进入下一阶段。</p>
+
+  <!-- P0 -->
+  <div class="phase" style="--c:var(--p0)">
+    <div class="phase-head">
+      <span class="tag">P0</span>
+      <h3>工具箱：Python 工程 + PyTorch + 环境</h3>
+      <span class="wk">W1–W3 · 60–75h</span>
+    </div>
+    <p class="goal">真正会让你在第 5 周放弃的不是数学，是 <b>CUDA 版本对不上 / shape 报错看不懂 / 改坏了不知道哪一步</b>。这三周是给后面 23 周铺路，投资回报率最高。</p>
+
+    <div class="callout" style="margin-bottom:18px;padding:13px 16px;">
+      <p style="font-size:13.4px;">📌 <b>本阶段已拆到天</b>：<code>P0-逐日执行清单.md</code>（Day 1–21 逐日任务 + 过关标准）· <code>P0-每日打卡看板.html</code>（可勾选、自动保存进度）</p>
+    </div>
+
+    <div class="label">知识清单</div>
+    <ul class="topics">
+      <li><b>环境</b>：Miniconda / uv、一项目一环境、VS Code Remote + Jupyter 端口转发（GPU 在服务器上必学）、CUDA 与 PyTorch 版本匹配</li>
+      <li><b>Python 工程</b>：类型注解、argparse、logging、pathlib、代码模块化（envs / algos / utils / train.py / config.yaml）</li>
+      <li><b>Git</b>：add / commit / branch / merge，每天至少提交一次 —— 这是你未来的科研履历</li>
+      <li><b>NumPy 向量化</b>：广播机制、einsum、批量矩阵运算。RL 代码里 for 循环是性能杀手</li>
+      <li><b>PyTorch 三件套</b>：autograd（手推反向传播再和框架对数）、nn.Module、手写完整训练循环</li>
+      <li><b>调试与实验管理</b>：打印张量形状（80% 的 bug 是 shape 不匹配）、固定随机种子、TensorBoard / W&amp;B</li>
+    </ul>
+
+    <div class="label">代码任务</div>
+    <ul class="tasks">
+      <li><label><input type="checkbox" data-k="p0a"><span>手写 MLP 训练 MNIST，不用高级封装，测试准确率 &gt; 97%</span></label></li>
+      <li class="key"><label><input type="checkbox" data-k="p0b"><span>手写 softmax / 交叉熵 / 线性层的前向+反向，与 PyTorch 梯度误差 &lt; 1e-5</span></label></li>
+      <li><label><input type="checkbox" data-k="p0c"><span>写一套通用 <code>train.py --config config.yaml</code> 模板，后续所有实验复用</span></label></li>
+      <li><label><input type="checkbox" data-k="p0d"><span>建 GitHub 仓库 <code>rl-vla-journey</code>，本阶段提交 ≥ 15 次</span></label></li>
+    </ul>
+    <div class="accept"><b>验收</b>：随便给你一个陌生的训练脚本，你能逐步说清每个张量的形状和数据流，并定位一处人为埋入的 bug。</div>
+  </div>
+
+  <!-- P1 -->
+  <div class="phase" style="--c:var(--p1)">
+    <div class="phase-head">
+      <span class="tag">P1</span>
+      <h3>RL 理论地基：MDP → TD → DQN</h3>
+      <span class="wk">W4–W8 · 100–125h</span>
+    </div>
+    <p class="goal">主教材用 <b>赵世钰《强化学习的数学原理》</b>（B 站，中文重推导，正好吃你的数学优势），辅以 Sutton &amp; Barto 第 1–9 章。</p>
+
+    <div class="label">知识清单</div>
+    <ul class="topics">
+      <li><b>MDP 与贝尔曼方程</b>：回报、值函数、贝尔曼期望方程与最优方程 —— 必须能手推；压缩映射与不动点</li>
+      <li><b>动态规划</b>：策略迭代、值迭代、截断策略迭代</li>
+      <li><b>无模型预测</b>：MC、TD(0)、n-step TD、TD(λ)；用数学讲清偏差–方差权衡</li>
+      <li><b>无模型控制</b>：Sarsa、Q-Learning、ε-greedy、GLIE；on-policy vs off-policy 的本质</li>
+      <li><b>值函数逼近</b>：致命三要素（函数逼近 + 自举 + off-policy）、DQN 的经验回放与目标网络</li>
+      <li><b>DQN 改进链</b>：Double → Dueling → Prioritized Replay → Noisy Net → Rainbow</li>
+      <li><b>探索与利用</b>：UCB、Thompson Sampling、熵正则化</li>
+    </ul>
+
+    <div class="label">代码任务</div>
+    <ul class="tasks">
+      <li><label><input type="checkbox" data-k="p1a"><span>GridWorld：手写策略迭代 + 值迭代，输出最优策略与值函数热力图</span></label></li>
+      <li><label><input type="checkbox" data-k="p1b"><span>手写 MC / TD(0) 估计状态值，画收敛曲线对比</span></label></li>
+      <li><label><input type="checkbox" data-k="p1c"><span>表格 Q-Learning 解 FrozenLake 与 CliffWalking</span></label></li>
+      <li class="key"><label><input type="checkbox" data-k="p1d"><span>手写 DQN（纯 PyTorch，约 200 行），打穿 CartPole，再上 LunarLander</span></label></li>
+      <li><label><input type="checkbox" data-k="p1e"><span>加 Double DQN + Dueling，与朴素 DQN 对比曲线，用 W&amp;B 记录</span></label></li>
+    </ul>
+    <div class="accept"><b>验收</b>：能手推贝尔曼最优方程并解释值迭代为何收敛；能不背课文地讲清 DQN 每个组件为什么存在；CartPole 稳定拿到接近满分。</div>
+  </div>
+
+  <!-- P2 -->
+  <div class="phase" style="--c:var(--p2)">
+    <div class="phase-head">
+      <span class="tag">P2</span>
+      <h3>策略优化：PG → PPO → SAC</h3>
+      <span class="wk">W9–W14 · 120–150h</span>
+    </div>
+    <p class="goal">从"估价"转向"直接优化策略"。<b>PPO 是本阶段核心，必须手写一遍并跑通 MuJoCo。</b></p>
+
+    <div class="label">知识清单</div>
+    <ul class="topics">
+      <li><b>策略梯度</b>：策略梯度定理（对数技巧 / 似然比两种推导）、REINFORCE、baseline、reward-to-go</li>
+      <li><b>Actor-Critic</b>：A2C/A3C、优势函数、GAE(λ) —— 再一次的偏差–方差权衡</li>
+      <li><b>信赖域方法</b>：TRPO 的 KL 约束与单调改进；PPO 的 clipped surrogate，必须能解释 clip 在约束什么</li>
+      <li><b>连续控制</b>：DDPG → TD3（双 critic / 延迟更新 / 目标平滑）、SAC（最大熵、重参数化、自动调温）</li>
+      <li><b>工具链</b>：Gymnasium API（terminated vs truncated）、MuJoCo、SB3 作对照、VectorEnv、种子可复现</li>
+    </ul>
+
+    <div class="label">代码任务</div>
+    <ul class="tasks">
+      <li><label><input type="checkbox" data-k="p2a"><span>手写 REINFORCE 解 CartPole，亲身体验方差有多大</span></label></li>
+      <li><label><input type="checkbox" data-k="p2b"><span>手写 A2C + GAE，与 REINFORCE 对比</span></label></li>
+      <li class="key"><label><input type="checkbox" data-k="p2c"><span>手写 PPO：先 CartPole 再 MuJoCo，曲线对标 Stable-Baselines3</span></label></li>
+      <li><label><input type="checkbox" data-k="p2d"><span>手写 SAC，解 Hopper 或 Walker2d 达到合理分数</span></label></li>
+      <li class="key"><label><input type="checkbox" data-k="p2e"><span>复现一篇工作（推荐《The 37 Implementation Details of PPO》或 SAC 实现细节消融）</span></label></li>
+    </ul>
+    <div class="accept"><b>验收</b>：能解释 PPO 的 clip 在做什么；手写 PPO 在 MuJoCo 上曲线合理；完整复现过一篇工作。</div>
+  </div>
+
+  <!-- 决策点 A -->
+  <div class="decision">
+    <h4>★ 决策点 A · 第 14 周末</h4>
+    <p>到这里你已经真正知道 RL 是什么了。做一次显式决策，三选一：</p>
+    <div class="opts">
+      <div class="opt"><b>A · 算法 / 理论本身</b><span>离线 RL、多智能体、探索机制、收敛性保证 —— 最吃你的数学优势，可冲理论/算法类论文</span></div>
+      <div class="opt"><b>B · RL for LLM</b><span>RLHF → DPO → GRPO、过程奖励模型、推理模型、Agent RL —— 当前最热、工业界岗位最多，但工程量大</span></div>
+      <div class="opt"><b>C · 具身智能 / VLA</b><span>机器人策略学习，RL + 模仿学习 + 多模态 —— 直接进入 P3，软硬结合，天花板高</span></div>
+    </div>
+    <div class="hint"><b>决策依据</b>：别看"哪个方向火"，回头看 W9–W14 这六周里，<b>你写哪部分代码时最不觉得累</b>。这个体感信号比理性分析更可靠，因为它反映了你能不能长期忍受这件事的日常。</div>
+  </div>
+
+  <!-- P3 -->
+  <div class="phase" style="--c:var(--p3)">
+    <div class="phase-head">
+      <span class="tag">P3</span>
+      <h3>VLA 与具身智能入门</h3>
+      <span class="wk">W15–W20 · 120–150h</span>
+    </div>
+    <p class="goal">W15 先花一周补齐 <b>Transformer</b>（手写 multi-head attention，不用 nn.Transformer），否则后面全是黑箱。</p>
+
+    <div class="label">知识清单</div>
+    <ul class="topics">
+      <li><b>视觉语言基础</b>：ViT、CLIP（对比学习）、SigLIP、DINOv2，视觉 token 与语言 token 如何对齐</li>
+      <li><b>模仿学习 / 行为克隆</b>：BC、DAgger、协变量偏移；动作表示（离散 token vs 连续 chunk）</li>
+      <li><b>代表方法</b>：Diffusion Policy、ACT（Action Chunking Transformer）</li>
+      <li><b>VLA 谱系</b>：RT-1(2022) → RT-2(2023，动作当 token) → OpenVLA(2024，开源 7B) → Octo → π0 / π0-FAST(流匹配)</li>
+      <li><b>关键问题</b>：动作 tokenization、跨本体泛化、推理频率、数据规模与来源</li>
+      <li><b>评测与仿真</b>：LIBERO、SimplerEnv、RoboMimic、CALVIN；MuJoCo、Isaac Lab、Genesis</li>
+      <li><b>RL × VLA 交叉地带</b>：VLA 初始化 + RL 微调、奖励设计、sim2real 域随机化、偏好对齐迁移</li>
+    </ul>
+
+    <div class="label">代码任务</div>
+    <ul class="tasks">
+      <li><label><input type="checkbox" data-k="p3a"><span>手写 multi-head attention，与 PyTorch 输出对齐</span></label></li>
+      <li><label><input type="checkbox" data-k="p3b"><span>手写 BC，在 MuJoCo 专家数据上训练</span></label></li>
+      <li class="key"><label><input type="checkbox" data-k="p3c"><span>跑通 LeRobot 官方全流程：数据集 → 训练 → 推理 → 部署</span></label></li>
+      <li class="key"><label><input type="checkbox" data-k="p3d"><span>微调 SmolVLA（约 450M）或 ACT / Diffusion Policy —— 6GB 显存够用</span></label></li>
+      <li><label><input type="checkbox" data-k="p3e"><span>在 LIBERO / SimplerEnv 上评测，写一份对比报告</span></label></li>
+      <li><label><input type="checkbox" data-k="p3f"><span>加分：OpenVLA 7B 只做 4-bit 推理（微调需租云端卡）；或用 Diffusion Policy 复现一个任务</span></label></li>
+    </ul>
+    <div class="accept"><b>验收</b>：能画出完整 VLA 技术路线图，讲清 RT-1 → RT-2 → OpenVLA → π0 每一代<b>解决了上一代的什么问题</b>。</div>
+  </div>
+
+  <!-- P4 -->
+  <div class="phase" style="--c:var(--p4)">
+    <div class="phase-head">
+      <span class="tag">P4</span>
+      <h3>相邻方向速览 + mini 课题</h3>
+      <span class="wk">W21–W24 · 100–120h</span>
+    </div>
+    <p class="goal">速览的价值不是"学会"，而是 <b>排除法</b> —— 看清哪些东西你完全不感兴趣。每个方向只花 1–2 天。</p>
+
+    <div class="label">速览清单</div>
+    <ul class="topics">
+      <li><b>世界模型</b>：Dreamer v3、Genie、World Models —— 用学到的模型做规划</li>
+      <li><b>多智能体 RL</b>：MADDPG、QMIX、MAPPO —— 核心难题是信用分配与非平稳性</li>
+      <li><b>LLM 后训练</b>：RLHF → DPO → GRPO、过程奖励模型、推理模型</li>
+      <li><b>离线 RL</b>：CQL、IQL、Decision Transformer（把 RL 变成序列建模）</li>
+      <li><b>效率与安全</b>：样本效率、安全 RL、可解释性</li>
+    </ul>
+
+    <div class="label">mini 课题（本计划最重要的产出）</div>
+    <ul class="topics">
+      <li>题目候选：<b>复现 + 消融</b>｜<b>VLA 模块改造</b>｜<b>RL 微调 BC 并量化提升</b>｜<b>小模型 GRPO 对齐复现</b></li>
+    </ul>
+    <div class="label">产出清单</div>
+    <ul class="tasks">
+      <li><label><input type="checkbox" data-k="p4a"><span>可运行代码仓库（README 写清：做了什么、怎么跑、结果如何）</span></label></li>
+      <li><label><input type="checkbox" data-k="p4b"><span>5–10 页技术报告（动机 / 方法 / 实验 / 结论 / <b>失败分析</b>）</span></label></li>
+      <li><label><input type="checkbox" data-k="p4c"><span>一次 15 分钟口头汇报（对着室友讲也行，能讲清就是真懂）</span></label></li>
+    </ul>
+    <div class="accept"><b>验收</b>：手上有一个完整作品 + 一套方法 + 对 3–5 个方向的实际体感。</div>
+  </div>
+
+  <!-- 决策点 B -->
+  <div class="decision">
+    <h4>★ 决策点 B · 第 24 周末</h4>
+    <p>此时你手上有：可复用的工程能力 + 一个完整项目 + 对多个方向的实际体感。</p>
+    <div class="hint">
+      <b>用这些去谈，而不是空着手去谈。</b><br>
+      · 找导师：带着作品和报告去，而不是问"老师我该做什么"<br>
+      · 判断深造：如果在 mini 课题里你能体会到"调 bug 调三天也愿意"，那就是适合做研究的信号<br>
+      · 如果发现都不喜欢：<b>立刻换赛道也是这个计划的目的之一</b> —— 你只花 6 个月就完成了排除
+    </div>
+  </div>
+
+  <!-- P5 -->
+  <div class="phase" style="--c:var(--p5)">
+    <div class="phase-head">
+      <span class="tag">P5</span>
+      <h3>收口：作品集 + 方向调研</h3>
+      <span class="wk">W25–W26</span>
+    </div>
+    <ul class="tasks">
+      <li><label><input type="checkbox" data-k="p5a"><span>GitHub 作品集：整理 3 个仓库，每个 README 讲清"我做了什么、结果如何"</span></label></li>
+      <li><label><input type="checkbox" data-k="p5b"><span>方向调研报告：RL / VLA 现状、国内外主要课题组、主要瓶颈、你的判断</span></label></li>
+      <li><label><input type="checkbox" data-k="p5c"><span>主动联系 2–3 位导师（附作品集链接 + 一页研究兴趣说明）</span></label></li>
+    </ul>
+  </div>
+
+  <h2 class="sec">本机硬件实况与能力边界</h2>
+  <p class="sec-desc">2026-10-16 实测。这一节决定了上面哪些任务你能本地跑、哪些必须租云卡。</p>
+
+  <div class="hw-grid">
+    <div class="hw">
+      <div class="k">显卡</div>
+      <div class="v">GTX 1660 Ti · 6GB</div>
+      <div class="n">sm_75 (Turing) · 无 Tensor Core · 80W<br>驱动 610.74，CUDA 已通 ✓</div>
+    </div>
+    <div class="hw">
+      <div class="k">CPU</div>
+      <div class="v">i7-10750H</div>
+      <div class="n">6 核 12 线程 · 2.6GHz<br>数据加载不会成为瓶颈</div>
+    </div>
+    <div class="hw warn">
+      <div class="k">内存</div>
+      <div class="v">16 GB</div>
+      <div class="n">当前仅剩 5.2 GB 可用<br><b>比显存更容易成为瓶颈</b></div>
+    </div>
+    <div class="hw">
+      <div class="k">系统盘 C:</div>
+      <div class="v">可用 13.2 GB</div>
+      <div class="n">已用 106.8 GB / 120 GB<br><b>已清理缓存 5.4 GB</b>（原 7.8 GB）</div>
+    </div>
+  </div>
+
+  <div class="alert">
+    <b>三个必须先处理的坑</b>
+    <ol>
+      <li><b>PATH 里的 <code>python</code> 不是 conda 的</b> —— 指向 <code>C:\...\Programs\Python\Python312</code>（独立安装，无 torch）。直接 <code>pip install</code> 会装进这个野生 Python，然后你在 conda 环境里怎么都 import 不到。<b>用完整路径 <code>&amp; "E:\anaconda\envs\pytorch\python.exe" 脚本.py</code>。</b>注意：<code>conda activate</code> 在本机 PowerShell 里<b>无效</b>（conda 4.10.3 未初始化 PowerShell），别依赖它，或用 Anaconda Prompt。</li>
+      <li><b><code>pytorch</code> 环境里 RL 依赖一个都没有</b> —— 已装 torch/torchvision/numpy/tensorboard；缺 gymnasium、stable_baselines3、scipy、matplotlib、pandas。</li>
+      <li><b>conda 4.10.3 是 2021 年的版本</b>，老式解算器装现代包会极慢甚至解不出依赖；且未对 PowerShell 初始化。另有 <code>pingyeling</code> 幽灵环境条目（目录已不存在）需要清理。</li>
+    </ol>
+  </div>
+
+  <table>
+    <tr><th>任务</th><th>能否本地跑</th><th>说明</th></tr>
+    <tr><td>DQN / PPO / SAC（CartPole）</td><td><span class="bdg">轻松</span></td><td>模型只有几层 MLP</td></tr>
+    <tr><td>PPO / SAC（MuJoCo）</td><td><span class="bdg">可以</span></td><td>显存占用 &lt; 1GB，压力在 CPU 和内存</td></tr>
+    <tr><td>并行环境 VectorEnv</td><td><span class="bdg mid">谨慎</span></td><td>瓶颈是 16GB 内存，建议先 ×4 不要 ×8</td></tr>
+    <tr><td>LeRobot + ACT / Diffusion Policy</td><td><span class="bdg">可以</span></td><td>小型 CNN / Transformer，几百 MB</td></tr>
+    <tr><td>SmolVLA（约 450M）微调</td><td><span class="bdg">可以</span></td><td>6GB 能装下，开混合精度</td></tr>
+    <tr><td>7B 模型 4-bit 推理</td><td><span class="bdg mid">勉强</span></td><td>权重约 4GB，做 demo 可以</td></tr>
+    <tr><td>7B 模型 LoRA / QLoRA 微调</td><td><span class="bdg no">不行</span></td><td>4-bit 权重 ~4GB + 激活 + 优化器，6GB 必 OOM</td></tr>
+    <tr><td>FlashAttention-2</td><td><span class="bdg no">不支持</span></td><td>需要 sm_80+（Ampere）</td></tr>
+    <tr><td>TF32 / 原生 bf16</td><td><span class="bdg no">不支持</span></td><td>Turing 无 Tensor Core；torch 报 bf16 可用是<b>软件模拟</b>，反而更慢</td></tr>
+  </table>
+
+  <div class="callout" style="margin-top:20px;background:#f0fdf4;border-color:#bbf7d0;">
+    <h3 style="color:#15803d">训练精度结论</h3>
+    <p>Turing 上就用 <b>fp16 + GradScaler</b>，或干脆 fp32（RL 的网络小，fp32 也不慢）。<b>不要用 bf16。</b></p>
+    <p>需要 7B 以上微调时：本地负责开发调试，云端负责大任务（Colab / Kaggle / AutoDL / 学校集群）。注意 <b>T4 也是 sm_75</b>，同样没 Tensor Core；要快就选 A100 / L40S / 4090。</p>
+    <p>另外 <code>CUDA_PATH</code> 指向 CUDA 11.3，与 torch 自带的 cu126 不一致——日常训练无影响，但<b>编译自定义 CUDA 算子时会出问题</b>（部分机器人与 VLA 包需要）。</p>
+  </div>
+
+  <div class="callout" style="margin-top:14px;background:#f0fdf4;border-color:#bbf7d0;">
+    <h3 style="color:#15803d">C 盘清理结果（2026-10-16 已执行）</h3>
+    <div class="hw-grid" style="margin:12px 0 6px">
+      <div class="hw"><div class="k">用户 Temp</div><div class="v">4.03 → 0.07 GB</div><div class="n">含遗留的 VS 安装包缓存 3.27 GB</div></div>
+      <div class="hw"><div class="k">pip 缓存</div><div class="v">1.42 → 0.00 GB</div><div class="n">1479 个 wheel 缓存文件</div></div>
+      <div class="hw"><div class="k">C 盘可用</div><div class="v">7.8 → 13.2 GB</div><div class="n"><b>净释放 5.4 GB</b></div></div>
+    </div>
+    <p style="margin-top:10px"><b>明确未动</b>：<code>C:\Windows\Temp</code>、Prefetch、Windows Update 缓存（系统级，动了才可能影响稳定性）；conda 包缓存（E 盘 5.14 GB）；回收站（1.66 GB，你的历史删除记录）；微信 / QQ 聊天记录；JetBrains / 金山 / 百度等应用数据。</p>
+  </div>
+
+  <div class="callout" style="margin-top:14px;background:#fffbeb;border-color:#fde68a;">
+    <h3 style="color:#92400e">还能再回收的空间（需你决定）</h3>
+    <p>· <b>回收站 1.66 GB</b> —— 清空即释放，但你之前删的文件会永久消失<br>
+       · <b>Tencent 7.94 GB / 金山 2.92 GB / 百度 1.80 GB / QQ 1.63 GB</b>（在 <code>AppData\Roaming</code>）—— 需在各客户端里改存储路径迁移到 D/E 盘，<b>不要直接删</b><br>
+       · <b>JetBrains 缓存 4.23 GB</b> —— 在 IDE 里用 <code>Invalidate Caches</code> 安全清理<br>
+       · <b>E 盘 conda 包缓存 5.14 GB</b> —— <code>conda clean --all</code>（本次未执行）</p>
+    <p style="margin-top:10px"><b>凡涉及个人文件的删除或迁移，都需要你明确指定后再执行。</b></p>
+  </div>
+
+  <h2 class="sec">每周节奏模板</h2>
+  <p class="sec-desc">按每周 25 小时设计。论文线从第 6 周启动。</p>
+  <table>
+    <tr><th>时段</th><th>时长</th><th>内容</th></tr>
+    <tr><td>周一–周五</td><td>每天 2h</td><td>理论：听课 / 读书 / 推公式，做结构化笔记</td></tr>
+    <tr><td>周一–周五</td><td>每天 1h</td><td>代码：写当天知识点对应的实现</td></tr>
+    <tr><td>周六</td><td>5h</td><td>集中编码：本周主任务（手写算法 / 跑实验 / 消融）</td></tr>
+    <tr><td>周日</td><td>3h</td><td>复盘：读 1–2 篇论文 + 写周报 + 整理代码与实验记录</td></tr>
+  </table>
+
+  <h2 class="sec">避坑清单</h2>
+  <p class="sec-desc">针对"编程弱"的专项提示 —— 这几条比上面所有内容加起来更能决定你能否走完。</p>
+  <ol class="pit">
+    <li><b>不要在没跑通玩具问题前上大项目。</b>CartPole 都没稳，别碰 MuJoCo。</li>
+    <li><b>一次只引入一个新概念。</b>跑通再加下一个。同时改三处，出错你归不了因。</li>
+    <li><b>报错先读完整 traceback。</b>最后一行是错误类型与原因，往上数第三行才是出错位置。</li>
+    <li><b>复制别人的代码必须逐行能解释</b>，否则等于没写。看不懂就追问到底。</li>
+    <li><b>不要开三条线并行。</b>RL 和 VLA 分阶段走，不要同时学。</li>
+    <li><b>不要追求"看完所有课"。</b>课程只是骨架，<b>代码任务才是主体</b>。</li>
+    <li><b>曲线不好别急着调超参。</b>先查环境有没有 bug、数据对不对、reward 定义是否符合预期。超参是最不该先怀疑的东西。</li>
+    <li><b>每天提交 Git。</b>不是为了好看，是为了你敢改代码。</li>
+  </ol>
+
+  <h2 class="sec">资源总表</h2>
+  <p class="sec-desc">标粗的是最优先看的，其余按需。</p>
+  <div class="res-grid">
+    <div class="res">
+      <h5>RL 理论</h5>
+      <ul>
+        <li><b>赵世钰《强化学习的数学原理》</b>B 站课程 — 中文首选，重推导</li>
+        <li>Sutton &amp; Barto《Reinforcement Learning》 — 官网免费 PDF</li>
+        <li>蘑菇书 EasyRL — GitHub 开源中文速通</li>
+        <li>David Silver 课程（选看）</li>
+        <li>UC Berkeley CS285 — 深度 RL 进阶</li>
+      </ul>
+    </div>
+    <div class="res">
+      <h5>RL 实践</h5>
+      <ul>
+        <li><b>OpenAI Spinning Up</b> — 代码 + 讲解，PPO 部分极好</li>
+        <li><b>CleanRL</b> — 单文件实现，读源码最佳材料</li>
+        <li>HuggingFace Deep RL Course — 免费，DQN 到 PPO</li>
+        <li>Stable-Baselines3 + RL Baselines3 Zoo — 对照 baseline</li>
+      </ul>
+    </div>
+    <div class="res">
+      <h5>VLA / 具身智能</h5>
+      <ul>
+        <li><b>HuggingFace LeRobot</b> — 框架+教程+数据集，入门起点</li>
+        <li>论文：RT-1 / RT-2 / OpenVLA / Diffusion Policy / ACT / π0</li>
+        <li>仓库：Awesome-VLA、openvla、octo</li>
+        <li>基准：LIBERO、SimplerEnv、RoboMimic</li>
+      </ul>
+    </div>
+    <div class="res">
+      <h5>Transformer / 大模型基础</h5>
+      <ul>
+        <li><b>Karpathy《Let's build GPT》</b> — 必看</li>
+        <li>The Annotated Transformer</li>
+        <li>李宏毅机器学习 / 生成式 AI 课程 — 中文，直觉好</li>
+      </ul>
+    </div>
+    <div class="res">
+      <h5>LLM 后训练</h5>
+      <ul>
+        <li>HuggingFace TRL 文档 — PPO / DPO / GRPO 实现</li>
+        <li>论文：InstructGPT、DPO、GRPO</li>
+      </ul>
+    </div>
+    <div class="res">
+      <h5>必装环境</h5>
+      <ul>
+        <li>Python + conda/uv · PyTorch + CUDA</li>
+        <li>Gymnasium、MuJoCo、Stable-Baselines3</li>
+        <li>Weights &amp; Biases（实验记录）</li>
+        <li>LeRobot（P3 阶段）</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="foot">
+    计划是为了被执行而存在的。<br>
+    如果某一阶段实际耗时超出 50%，优先砍内容（少学一个算法），而不是降低验收标准。
+  </div>
+
+</div>
+
+<script>
+(function(){
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('input[type=checkbox][data-k]'));
+  var KEY = 'rl_vla_roadmap_v1';
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch(e){ saved = {}; }
+
+  function render(){
+    var done = 0;
+    boxes.forEach(function(b){ if(b.checked) done++; });
+    var total = boxes.length;
+    var pct = total ? Math.round(done / total * 100) : 0;
+    document.getElementById('fill').style.width = pct + '%';
+    document.getElementById('pct').textContent = pct + '%';
+    document.getElementById('cnt').textContent = done + ' / ' + total + ' 项';
+  }
+  function save(){
+    var o = {};
+    boxes.forEach(function(b){ if(b.checked) o[b.dataset.k] = 1; });
+    try { localStorage.setItem(KEY, JSON.stringify(o)); } catch(e){}
+  }
+  boxes.forEach(function(b){
+    if(saved[b.dataset.k]) b.checked = true;
+    b.addEventListener('change', function(){ save(); render(); });
+  });
+  render();
+})();
+</script>
+</body>
+</html>

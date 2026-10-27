@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P0 每日打卡看板 · 21 天</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --card:#fff; --text:#1f2430; --muted:#6b7280;
+    --border:#e5e7eb; --accent:#3b5bdb; --accent-soft:#eef1fd;
+    --w1:#3b5bdb; --w2:#0e9f6e; --w3:#d97706;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:"PingFang SC","Microsoft YaHei","Hiragino Sans GB","Segoe UI",system-ui,sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.75;
+    -webkit-font-smoothing:antialiased;padding:0 0 80px;
+  }
+  .wrap{max-width:940px;margin:0 auto;padding:0 24px;}
+
+  .hero{padding:48px 0 24px;}
+  .hero h1{font-size:32px;font-weight:800;letter-spacing:-.5px;line-height:1.3;}
+  .hero h1 span{color:var(--accent);}
+  .hero p.sub{margin-top:10px;color:var(--muted);font-size:14.5px;}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px;}
+  .chip{background:#fff;border:1px solid var(--border);border-radius:999px;padding:5px 14px;font-size:12.8px;color:#374151;font-weight:500;}
+  .chip b{color:var(--accent);}
+
+  .progress-box{
+    position:sticky;top:0;z-index:20;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);
+    border:1px solid var(--border);border-radius:14px;padding:14px 18px;margin:8px 0 26px;
+    box-shadow:0 2px 12px rgba(15,23,42,.05);
+  }
+  .progress-head{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--muted);margin-bottom:8px;}
+  .progress-head b{font-size:15px;color:var(--text);}
+  .bar{height:8px;background:#eceef2;border-radius:99px;overflow:hidden;}
+  .bar i{display:block;height:100%;width:0%;border-radius:99px;background:linear-gradient(90deg,#3b5bdb,#7048e8);transition:width .35s ease;}
+  .wk-mini{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:12.5px;color:var(--muted);}
+  .wk-mini span b{color:var(--text);font-variant-numeric:tabular-nums;}
+  .wk-mini em{font-style:normal;color:#94a3b8;}
+
+  .callout{background:var(--accent-soft);border:1px solid #dbe2fb;border-radius:16px;padding:20px 22px;margin-bottom:26px;}
+  .callout h3{font-size:14.5px;font-weight:700;color:var(--accent);margin-bottom:9px;}
+  .callout p{font-size:14px;color:#334155;}
+  .callout p+p{margin-top:7px;}
+  .callout em{font-style:normal;font-weight:700;color:#1e293b;background:#fff;padding:1px 6px;border-radius:5px;}
+
+  .alert{border-left:3px solid #ef4444;background:#fef2f2;border-radius:0 10px 10px 0;padding:14px 18px;margin:0 0 30px;font-size:13.8px;color:#7f1d1d;}
+  .alert b{color:#991b1b;}
+
+  h2.sec{font-size:19px;font-weight:800;margin:44px 0 4px;letter-spacing:-.2px;}
+  h2.sec .tag{
+    display:inline-block;font-size:12px;font-weight:700;letter-spacing:.4px;color:#fff;
+    padding:3px 10px;border-radius:6px;vertical-align:2px;margin-right:9px;background:var(--c);
+  }
+  .sec-goal{color:var(--muted);font-size:13.6px;margin-bottom:18px;}
+
+  .day{
+    background:var(--card);border:1px solid var(--border);border-radius:15px;
+    margin-bottom:13px;position:relative;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.04);
+  }
+  .day::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--c);}
+  .day>summary{
+    list-style:none;cursor:pointer;padding:15px 20px 15px 22px;
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  }
+  .day>summary::-webkit-details-marker{display:none;}
+  .day>summary::after{
+    content:"▾";margin-left:auto;color:#94a3b8;font-size:13px;transition:transform .2s;
+  }
+  .day[open]>summary::after{transform:rotate(180deg);}
+  .day .dn{
+    font-size:12px;font-weight:800;letter-spacing:.3px;color:#fff;background:var(--c);
+    padding:3px 9px;border-radius:6px;flex:0 0 auto;font-variant-numeric:tabular-nums;
+  }
+  .day .dt{font-size:15.5px;font-weight:700;letter-spacing:-.15px;}
+  .day .dh{font-size:12.5px;color:var(--muted);font-weight:600;font-variant-numeric:tabular-nums;}
+  .day .dcur{
+    font-size:11.5px;font-weight:700;color:var(--c);background:var(--accent-soft);
+    padding:2px 8px;border-radius:5px;font-variant-numeric:tabular-nums;
+  }
+  .day .body{padding:0 22px 18px;}
+  .day .goal{font-size:13.6px;color:var(--muted);background:#f8fafc;border-radius:9px;padding:10px 13px;margin-bottom:14px;}
+  .day .goal b{color:var(--c);}
+  .lbl{font-size:11.5px;font-weight:700;color:var(--muted);letter-spacing:.6px;margin:12px 0 7px;}
+  .lbl:first-of-type{margin-top:0;}
+
+  ul.tasks{list-style:none;}
+  ul.tasks li{margin-bottom:6px;}
+  ul.tasks label{display:flex;gap:10px;align-items:flex-start;cursor:pointer;font-size:14px;color:#374151;}
+  ul.tasks input{appearance:none;width:17px;height:17px;flex:0 0 17px;margin-top:5px;
+    border:1.5px solid #cbd5e1;border-radius:5px;background:#fff;cursor:pointer;transition:all .15s;position:relative;}
+  ul.tasks input:checked{background:var(--c);border-color:var(--c);}
+  ul.tasks input:checked::after{content:"";position:absolute;left:5px;top:1.5px;width:5px;height:9px;
+    border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);}
+  ul.tasks input:checked+span{text-decoration:line-through;color:#9ca3af;}
+  ul.tasks li.key label{font-weight:650;}
+  ul.tasks input[type=checkbox]{}
+  ul.tasks li.key label>.mk{
+    font-size:10.5px;font-weight:700;color:#b91c1c;background:#fee2e2;
+    padding:1px 6px;border-radius:5px;margin-left:4px;flex:0 0 auto;margin-top:4px;
+  }
+  ul.tasks code{background:#f1f3f7;padding:1px 5px;border-radius:4px;font-size:12.3px;color:#b91c1c;
+    font-family:ui-monospace,Consolas,"Courier New",monospace;}
+
+  .pass{margin-top:14px;background:#f0fdf4;border-left:3px solid #22c55e;border-radius:0 8px 8px 0;
+    padding:10px 13px;font-size:13.2px;color:#166534;}
+  .pass b{color:#15803d;}
+  .pass ul{list-style:none;margin-top:5px;}
+  .pass li{position:relative;padding-left:16px;margin-bottom:2px;}
+  .pass li::before{content:"◦";position:absolute;left:3px;color:#4ade80;}
+
+  table{width:100%;border-collapse:collapse;background:#fff;font-size:13.6px;
+    border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-top:6px;}
+  th{background:#f1f3f7;text-align:left;padding:10px 15px;font-weight:700;font-size:12.8px;color:#475569;}
+  td{padding:10px 15px;border-top:1px solid var(--border);color:#374151;vertical-align:top;}
+  td:first-child{font-weight:650;color:#1e293b;}
+  td code{background:#f1f3f7;padding:1px 5px;border-radius:4px;font-size:12.3px;color:#b91c1c;}
+
+  .foot{margin-top:48px;text-align:center;font-size:13px;color:#94a3b8;padding-top:22px;border-top:1px solid var(--border);}
+  .reset{
+    display:block;margin:22px auto 0;background:#fff;border:1px solid var(--border);color:var(--muted);
+    font-size:12.5px;padding:7px 16px;border-radius:8px;cursor:pointer;font-family:inherit;
+  }
+  .reset:hover{border-color:#cbd5e1;color:#374151;}
+
+  @media(max-width:640px){
+    .hero h1{font-size:24px;} .hero{padding:30px 0 18px;}
+    .day .dt{font-size:14.5px;}
+    .day>summary{padding:13px 16px 13px 18px;}
+    .day .body{padding:0 17px 16px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <h1>P0 每日打卡看板<br><span>21 天 · 工程地基 → PyTorch 内核 → 能交付</span></h1>
+    <p class="sub">勾选后自动保存在本机浏览器。Day 是顺序编号，不是日期——少做一天就顺延。</p>
+    <div class="chips">
+      <span class="chip">共 <b>21 天</b></span>
+      <span class="chip">每周 <b>25h</b></span>
+      <span class="chip">Git 提交目标 <b>≥15</b></span>
+      <span class="chip">MNIST 准确率 <b>&gt;97%</b></span>
+    </div>
+  </div>
+
+  <div class="progress-box">
+    <div class="progress-head">
+      <span>总进度（自动保存到本机）</span>
+      <span><b id="pct">0%</b> · <span id="cnt">0 / 0 项</span></span>
+    </div>
+    <div class="bar"><i id="fill"></i></div>
+    <div class="wk-mini" id="wkmini"></div>
+  </div>
+
+  <div class="callout">
+    <h3>三条纪律（比看多少视频重要）</h3>
+    <p><b>①</b> <em>每天至少一次 Git 提交。</em>不是为了好看，是为了你敢改代码。</p>
+    <p><b>②</b> <em>一次只改一处。</em>同时改三处，出错你归不了因。曲线不好别急着调超参。</p>
+    <p><b>③</b> <em>过关标准打不上勾，就别进下一天。</em>卡住直接把完整报错贴给我。</p>
+  </div>
+
+  <div class="alert">
+    <b>今天第 1 件事</b>：你的 Git 全局身份还是空的。<code>git config --global user.name / user.email</code> 都未设置，Day 1 必须补上，否则后面所有提交都是无名记录。
+  </div>
+
+  <div id="board"></div>
+
+  <button class="reset" id="reset">清空所有勾选</button>
+
+  <div class="foot">
+    计划是为了被执行而存在的。<br>
+    Day 21 的埋 bug 测试是唯一能真正检验"你能不能独立调试"的方式。
+  </div>
+
+</div>
+
+<script>
+var WEEKS = [
+  {
+    id:'w1', tag:'W1', title:'工程地基', color:'var(--w1)', key:'rl_p0_w1_v1',
+    goal:'结束后你应该能：从零建一个结构清晰的项目、用 logging 而不是 print、用 --config 而不是改代码、每次改动都有 Git 记录。',
+    days:[
+      { n:1, h:'3h', t:'环境固化 + 项目骨架',
+        g:'把"环境明天还能用"从运气变成确定的事，并建立项目骨架、打出第一个 commit。',
+        tasks:[
+          {k:'e', t:'<code>conda activate pytorch</code> → 跑 <code>check_env.py</code>，确认仍 16/16'},
+          {k:'k', t:'配置 Git 全局身份 <code>user.name / user.email / init.defaultBranch</code><span class="mk">首要</span>'},
+          {t:'建目录骨架 <code>src/utils configs scripts notebooks outputs weekly</code> + <code>git init</code>'},
+          {t:'写 <code>scripts/env_info.py</code>：pathlib + logging + 输出报告到 <code>outputs/</code>'},
+          {t:'写 <code>.gitignore</code>，提交第一次 commit'}
+        ],
+        pass:['脚本能正常跑完，产出 <code>env_report.txt</code>','<code>git log --oneline</code> 有 1 条记录','<code>outputs/</code> 没被提交进 Git'] },
+
+      { n:2, h:'3h', t:'Python 工程基本功（上）：类型注解 / pathlib / 异常',
+        g:'摆脱脚本式写法，开始写"能被别人看懂"的代码。',
+        tasks:[
+          {t:'读官方文档 typing 简要 + pathlib 全章'},
+          {k:'k', t:'写 <code>src/utils/logger.py</code>：同时输出控制台与文件，全函数带类型注解<span class="mk">核心</span>'},
+          {t:'写 <code>src/utils/paths.py</code>：Path 常量 + <code>ensure_dir()</code> + 时间戳目录生成'},
+          {t:'改造 <code>env_info.py</code> 用上新模块，加异常处理'},
+          {t:'提交 ≥2 次'}
+        ],
+        pass:['两个模块每个函数都有类型注解，无裸 print','写错路径时报出可读错误而非 traceback 糊脸','今天 ≥2 次 commit'] },
+
+      { n:3, h:'3h', t:'Python 工程基本功（下）：argparse + 配置系统',
+        g:'从此改参数不改代码。这是 P1 之后所有实验的地基。',
+        tasks:[
+          {t:'学 argparse、yaml 读取、dataclass 定义配置'},
+          {k:'k', t:'写 <code>configs/default.yaml</code> + <code>src/utils/config.py</code>（缺键用默认值补全）<span class="mk">核心</span>'},
+          {t:'写 <code>train.py</code> 壳：命令行覆盖 yaml → 打印最终配置 → 建时间戳输出目录 → 存 config 备份'},
+          {t:'提交'}
+        ],
+        pass:['<code>--seed 42</code> 确实覆盖了 yaml 的值','<code>outputs/</code> 下多出带时间戳目录，内含 config 备份','我能解释解析器与 yaml 是怎么合并的'] },
+
+      { n:4, h:'3h', t:'Git 完整流程 + 上 GitHub',
+        g:'把"每天提交"变成习惯，并让作品第一次出现在公网上。',
+        tasks:[
+          {t:'学廖雪峰 Git：status / diff / log / restore / branch / merge / reset'},
+          {k:'k', t:'刻意练习：建分支 → 制造一次冲突 → 手动解决 → 练一次 <code>git restore</code><span class="mk">必做</span>'},
+          {t:'建 GitHub 仓库 <code>rl-vla-journey</code>（public），配 SSH key 或 PAT，push 上去'},
+          {t:'补 <code>README.md</code> / <code>.gitignore</code> / <code>requirements.txt</code>'}
+        ],
+        pass:['GitHub 仓库能看到代码','我亲手解决过一次 merge 冲突，能口述怎么解的','今天 ≥3 次 commit，README 有实质内容'] },
+
+      { n:5, h:'3h', t:'NumPy 向量化思维',
+        g:'建立"能用张量批量算就不写循环"的直觉——这是 RL 代码性能的命门。',
+        tasks:[
+          {t:'学广播机制、einsum、axis 语义、视图 vs 拷贝'},
+          {k:'k', t:'作业 A：三层 for 循环矩阵乘法 vs <code>A @ B</code>，各测 3 次打印对比表<span class="mk">核心</span>'},
+          {t:'作业 B：用 einsum 算 <code>Q(B,L,D)×K(B,S,D)→scores(B,L,S)</code> + softmax，零 for 循环'},
+          {t:'写 <code>notebooks/w1_numpy_notes.md</code>：3–5 条今天真觉得"原来如此"的点'}
+        ],
+        pass:['我能说清 (B,L,D) @ (B,D,S) 的广播规则','作业 B 全程零 for 循环','加速比是测出来的，不是估的'] },
+
+      { n:6, h:'6h', t:'集中编码日：第一个完整小项目「环境探针」',
+        g:'把 W1 所有工程技能串起来，做出有图、有记录、能复现的小项目。只摸 API 表面，不学 RL。',
+        tasks:[
+          {t:'写 <code>scripts/explore_cartpole.py</code>：config 控参数，随机策略跑 100 回合，记录回报与步数'},
+          {t:'观察并记录 <code>reset()</code> / <code>step()</code> 返回什么，搞清 terminated vs truncated 的区别'},
+          {t:'matplotlib 画回报折线 + 直方图存到 <code>outputs/&lt;时间戳&gt;/</code>'},
+          {t:'用 tensorboard 或 wandb 记录同样的数据'},
+          {k:'k', t:'固定种子跑两次，确认结果完全一致<span class="mk">核心</span>'},
+          {t:'README 加一节「CartPole 随机策略基线」，写入平均回报与标准差'}
+        ],
+        pass:['换 seed 结果就变，同 seed 结果完全一致','我能说清 reset() 和 step() 各返回什么','我知道随机策略大概能拿多少分','今天 ≥4 次 commit'] },
+
+      { n:7, h:'4h', t:'复盘 + 输出 + W2 预热',
+        g:'把一周的东西固化下来，并第一次做"输出"这件事。',
+        tasks:[
+          {t:'写周报 <code>weekly/w01.md</code>：做了什么 / 卡了什么 / 给下周的提醒 / 输入 vs 编码时间比'},
+          {k:'k', t:'写一篇 200–400 字学习小结（主题建议：for 循环换矩阵乘法为什么快了 300 倍）<span class="mk">输出</span>'},
+          {t:'W2 预热：读 PyTorch 官方 Autograd Mechanics'},
+          {t:'体检：重跑 check_env.py、数提交数、清 outputs'}
+        ],
+        pass:['Git 本周提交 ≥12 次','我能不看笔记说出 logging 好在哪、config 系统解决了什么问题','我对 loss.backward() 在做什么有初步答案'] }
+    ]
+  },
+  {
+    id:'w2', tag:'W2', title:'PyTorch 内核', color:'var(--w2)', key:'rl_p0_w2_v1',
+    goal:'本周之后你应该能：手推两层网络的反向传播、手写完整训练循环、解释 autograd 内部机制。本周不看任何 RL 内容。',
+    days:[
+      { n:8, h:'3h', t:'Tensor 与自动微分',
+        g:'吃透 shape / dtype / device 三要素，并亲手验证 autograd 的正确性。',
+        tasks:[
+          {t:'学张量三要素、requires_grad、计算图'},
+          {k:'k', t:'手算 <code>f=x²y+y³</code> 在 (2,3) 的偏导，再用 <code>autograd.grad</code> 对拍并断言<span class="mk">核心</span>'},
+          {t:'换一个复合函数（sin/exp/矩阵乘混合）重复一遍'},
+          {t:'踩三个坑并记录：忘记 zero_grad / detach vs no_grad / 为什么必须 .item()'}
+        ],
+        pass:['手算与 autograd 误差 &lt; 1e-6','我能说清 requires_grad / 计算图 / backward() 三者关系'] },
+
+      { n:9, h:'3h', t:'手推反向传播（本阶段数学含量最高的一天）',
+        g:'吃你数学优势的地方。这一天的产出是理解后面所有 RL 算法梯度的基础，别赶。',
+        tasks:[
+          {k:'k', t:'纸上手推两层 MLP 的 ∂L/∂W2、∂L/∂W1、∂L/∂b，包括 softmax+CE 的漂亮梯度形式<span class="mk">必做</span>'},
+          {t:'用纯 numpy 实现这份推导（前向 + 反向，不用 torch）'},
+          {t:'与 torch 对拍梯度，确认一致'},
+          {t:'推导笔记存进 <code>notebooks/w2_backprop_derivation.md</code>'}
+        ],
+        pass:['我能不看笔记推出 softmax + CE 对 logits 的梯度','numpy 手算梯度与 torch 一致（&lt; 1e-5）'] },
+
+      { n:10, h:'3h', t:'nn.Module 与参数管理',
+        g:'理解"为什么 self.fc = nn.Linear(...) 会被自动登记"，这是所有 torch 模型的地基。',
+        tasks:[
+          {t:'学 Module 注册机制、parameters()/named_parameters()、state_dict()'},
+          {k:'k', t:'写自定义 <code>MLP</code> 类，核对参数总数与手算一致<span class="mk">核心</span>'},
+          {t:'试默认 / Xavier / Kaiming 三种初始化，打印输出激活值的方差'},
+          {t:'记录：为什么权重初始化会影响能否训起来'}
+        ],
+        pass:['我手算的参数总数与 <code>sum(p.numel())</code> 一致','我能说清 state_dict() 为什么优于 pickle 模型'] },
+
+      { n:11, h:'3h', t:'数据集与训练循环',
+        g:'第一次自己写出完整的训练循环（不是调包）。',
+        tasks:[
+          {t:'学 TensorDataset / DataLoader / batch_size / shuffle'},
+          {k:'k', t:'手写完整训练循环（先用合成分类数据）：每个 epoch 记录 loss 与准确率<span class="mk">核心</span>'},
+          {t:'把每个 batch 的张量形状打印一遍（养成肌肉记忆）'},
+          {t:'把 batch_size 从 8 改成全量，观察 loss 曲线形状变化'}
+        ],
+        pass:['我能画出数据从 Dataset 到 loss 的完整流动，每个形状都说得出来','我能解释为什么顺序是 zero_grad → forward → loss → backward → step'] },
+
+      { n:12, h:'3h', t:'损失函数与优化器原理',
+        g:'知道 Adam 多了什么，以及 CrossEntropyLoss 里已经含了 softmax。',
+        tasks:[
+          {t:'学 CrossEntropyLoss 内部做了什么；SGD / Momentum / Adam 的更新公式'},
+          {k:'k', t:'纯 Python 手写 SGD 与 Momentum，与 torch.optim 对拍轨迹一致<span class="mk">核心</span>'},
+          {t:'加一个简单学习率衰减，画 lr 随 step 变化的曲线'}
+        ],
+        pass:['我能说清 Adam 相比 SGD 多用了什么','手写优化器参数轨迹与 torch 一致','我知道 CrossEntropyLoss 已含 softmax'] },
+
+      { n:13, h:'6h', t:'集中编码日：MNIST MLP 第一版',
+        g:'第一次跑通真数据集。今天只追求能跑通，不追求准确率。',
+        tasks:[
+          {t:'加载 MNIST，先可视化 10 张图确认数据没读错（这步永远别省）'},
+          {t:'复用 MLP + 训练循环跑通全流程，记录 train/val loss 与准确率，画曲线'},
+          {t:'保存 checkpoint（state_dict）'},
+          {k:'k', t:'固定全部种子（含 DataLoader generator），跑两次确认曲线完全一致<span class="mk">核心</span>'},
+          {t:'接上配置系统：<code>python train.py --config configs/mnist_mlp.yaml</code>'}
+        ],
+        pass:['一条命令能从命令行跑起全流程','同 seed 跑两次结果完全一致','今天 ≥4 次 commit'] },
+
+      { n:14, h:'4h', t:'复盘 + 整理推导笔记',
+        g:'把 Day 9 的推导变成一份能拿出去给人看的东西。',
+        tasks:[
+          {t:'整理 Day 9 推导成干净笔记（将来找导师/面试能用）'},
+          {t:'写 <code>weekly/w02.md</code>，重点回答：autograd 帮我做了什么？没有它我要多写哪些代码？'},
+          {t:'重跑 check_env.py + 清 outputs + 检查提交数'}
+        ],
+        pass:['我能给别人讲清反向传播的完整流程','Git 累计提交 ≥20','我知道自己 W1 哪几天效率最低、为什么'] }
+    ]
+  },
+  {
+    id:'w3', tag:'W3', title:'从"能跑"到"能交付"', color:'var(--w3)', key:'rl_p0_w3_v1',
+    goal:'本周结束就是 P0 验收。核心是"达标"和"可复用"，不是"再多学点"。',
+    days:[
+      { n:15, h:'3h', t:'MNIST 打到 &gt;97%',
+        g:'把第一版推上去，并搞清楚每一处改动为什么有效。',
+        tasks:[
+          {t:'数据预处理：用训练集 mean/std 做标准化'},
+          {k:'k', t:'逐项实验并填表：加隐藏层 / 换 Kaiming / 换 Adam / 加调度 / 加 dropout——一次只改一处<span class="mk">核心</span>'},
+          {t:'把最好配置记进 yaml'}
+        ],
+        pass:['测试准确率 &gt; 97%，且我能解释每一处改动的原理','我的实验记录能让我凭它复现最好结果'] },
+
+      { n:16, h:'3h', t:'手写 softmax + 交叉熵（前向+反向）',
+        g:'P0 的核心任务之一：把 Day 9 的推导落成可对拍的代码。',
+        tasks:[
+          {k:'k', t:'实现 softmax / log_softmax（必须减最大值做数值稳定）+ cross_entropy 及三者反向<span class="mk">核心</span>'},
+          {t:'与 <code>torch.nn.functional</code> 前向对拍，与 autograd 梯度对拍，断言 &lt; 1e-5'},
+          {t:'极端值测试：输入 [1000,1000,1000]，对比做了稳定处理 vs 没做'}
+        ],
+        pass:['前向与梯度对拍误差均 &lt; 1e-5','我能解释为什么必须减最大值，不减会发生什么'] },
+
+      { n:17, h:'3h', t:'手写线性层 + 模块化重构',
+        g:'解决 weight shape 的转置问题，并把项目结构理顺。',
+        tasks:[
+          {k:'k', t:'手写 <code>Linear</code> 前向+反向，与 nn.Linear 对拍（注意 weight 是 (out,in)）<span class="mk">核心</span>'},
+          {t:'重构：models/ utils/ 下沉实现，train.py 只负责编排'},
+          {t:'提交并推到 GitHub'}
+        ],
+        pass:['train.py 读起来像"流程说明"而不是"实现细节"','我能说清 nn.Linear 的 weight shape 为什么是 (out,in)'] },
+
+      { n:18, h:'3h', t:'工程化收尾：可复现性与实验记录',
+        g:'让一年后的你能回答"这条曲线是哪次、什么配置、什么代码跑的"。',
+        tasks:[
+          {t:'写 <code>src/utils/seed.py</code>：统一固定 torch/numpy/random/cudnn，返回 DataLoader generator'},
+          {t:'读 <code>use_deterministic_algorithms</code> 文档，知道它的代价'},
+          {k:'k', t:'用 tensorboard 或 wandb 记录 loss/acc/lr + config + git commit hash + seed<span class="mk">核心</span>'}
+        ],
+        pass:['我能从历史曲线倒推它的配置和代码版本','我知道固定种子后仍可能不确定的两个来源'] },
+
+      { n:19, h:'3h', t:'<code>train.py --config</code> 模板定稿',
+        g:'这是 P0 最重要的交付物之一——P1 到 P4 每个算法都会复用它。',
+        tasks:[
+          {k:'k', t:'打磨通用性：配置分层、支持 <code>--resume</code> 续训、Ctrl+C 时优雅保存<span class="mk">核心</span>'},
+          {t:'用模板重跑一次 MNIST，确认没退化'}
+        ],
+        pass:['换一个 --config 就能跑不同实验，不需要改任何代码','--resume 真能续上','Ctrl+C 中断后 checkpoint 完好'] },
+
+      { n:20, h:'6h', t:'集中编码：出正式结果 + 写 README',
+        g:'让别人第一次看到你仓库时留下印象。',
+        tasks:[
+          {t:'用定稿模板跑 2–3 个配置的正式实验，出对比曲线到 outputs/'},
+          {k:'k', t:'写 README：一句话说明 + 目录结构 + 怎么装怎么跑 + 目前结果 + 踩过的坑<span class="mk">核心</span>'},
+          {t:'整理 GitHub：至少 3 条有意义的 commit 信息'},
+          {t:'提交数达标（P0 要求 ≥15）'}
+        ],
+        pass:['README 里的命令是我实际执行过的，不是凭记忆写的','Git 提交数 ≥15','今天 ≥4 次 commit'] },
+
+      { n:21, h:'4h', t:'P0 验收',
+        g:'别跳过这一步。这是唯一能检验"你能不能独立调试"的环节。',
+        tasks:[
+          {k:'k', t:'自我验收三条：30 分钟配好环境 / 说清每个张量形状与数据流 / ≥15 次提交<span class="mk">验收</span>'},
+          {k:'k', t:'埋 bug 测试：自己埋 3 个 bug（shape 反了 / 忘 zero_grad / CE 前多加 softmax），隔天只靠 traceback 和形状定位<span class="mk">验收</span>'},
+          {t:'写 <code>weekly/w03.md</code> + P0 总结：投入时长 vs 原计划、哪里比预期简单、给 P1 的一句话建议'},
+          {t:'提交 + push + 更新总看板'}
+        ],
+        pass:['三个 bug 全部定位成功','P0 三条验收标准全部打勾','我有信心在 Day 22 开始学 MDP 而不心虚'] }
+    ]
+  }
+];
+
+(function(){
+  var board = document.getElementById('board');
+  var html = '';
+
+  WEEKS.forEach(function(w){
+    html += '<h2 class="sec" style="--c:' + w.color + '"><span class="tag">' + w.tag + '</span>' + w.title + '</h2>';
+    html += '<p class="sec-goal">' + w.goal + '</p>';
+    w.days.forEach(function(d){
+      html += '<details class="day" style="--c:' + w.color + '" open>';
+      html += '<summary>'
+            +   '<span class="dn">Day ' + d.n + '</span>'
+            +   '<span class="dt">' + d.t + '</span>'
+            +   '<span class="dh">' + d.h + '</span>'
+            +   '<span class="dcur" data-cnt="' + w.id + '-' + d.n + '">0/0</span>'
+            + '</summary>';
+      html += '<div class="body">';
+      html += '<div class="goal"><b>目标</b> · ' + d.g + '</div>';
+      html += '<div class="lbl">任务</div><ul class="tasks">';
+      d.tasks.forEach(function(tk, i){
+        var kk = w.id + '-d' + d.n + '-t' + i;
+        html += '<li' + (tk.k === 'k' ? ' class="key"' : '') + '><label>'
+              +   '<input type="checkbox" data-k="' + kk + '" data-day="' + w.id + '-' + d.n + '">'
+              +   '<span>' + tk.t + '</span></label></li>';
+      });
+      html += '</ul>';
+      if (d.pass && d.pass.length){
+        html += '<div class="pass"><b>过关标准</b><ul>';
+        d.pass.forEach(function(p){ html += '<li>' + p + '</li>'; });
+        html += '</ul></div>';
+      }
+      html += '</div></details>';
+    });
+  });
+
+  html += '<h2 class="sec" style="--c:#64748b">P0 三个硬指标</h2>'
+        + '<p class="sec-goal">对应主计划的代码任务，全部要在 Day 1–21 内完成。</p>'
+        + '<table><tr><th>指标</th><th>目标</th><th>落在哪一天</th></tr>'
+        + '<tr><td>MNIST MLP</td><td>不用高级封装，测试准确率 &gt; 97%</td><td>Day 15</td></tr>'
+        + '<tr><td>手写 softmax / 交叉熵 / 线性层</td><td>与 PyTorch 梯度误差 &lt; 1e-5</td><td>Day 16–17</td></tr>'
+        + '<tr><td>通用 <code>train.py --config</code> 模板</td><td>P1–P4 全部复用</td><td>Day 19</td></tr>'
+        + '<tr><td>GitHub 仓库 <code>rl-vla-journey</code></td><td>本阶段提交 ≥ 15 次</td><td>Day 20</td></tr>'
+        + '</table>';
+
+  board.innerHTML = html;
+
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('input[type=checkbox][data-k]'));
+  var KEYS = {};
+  WEEKS.forEach(function(w){ KEYS[w.id] = w.key; });
+  var saved = {};
+  WEEKS.forEach(function(w){
+    try { saved[w.id] = JSON.parse(localStorage.getItem(w.key) || '{}'); }
+    catch(e){ saved[w.id] = {}; }
+  });
+
+  function wkOf(b){
+    var id = b.dataset.day.split('-')[0];
+    return id;
+  }
+
+  function render(){
+    var done = 0, total = boxes.length;
+    var perWk = {};
+    WEEKS.forEach(function(w){ perWk[w.id] = {d:0, t:0}; });
+    var perDay = {};
+
+    boxes.forEach(function(b){
+      var wk = wkOf(b), day = b.dataset.day;
+      perWk[wk].t++;
+      if (!perDay[day]) perDay[day] = {d:0, t:0};
+      perDay[day].t++;
+      if (b.checked){ done++; perWk[wk].d++; perDay[day].d++; }
+    });
+
+    var pct = total ? Math.round(done / total * 100) : 0;
+    document.getElementById('fill').style.width = pct + '%';
+    document.getElementById('pct').textContent = pct + '%';
+    document.getElementById('cnt').textContent = done + ' / ' + total + ' 项';
+
+    document.getElementById('wkmini').innerHTML = WEEKS.map(function(w){
+      var p = perWk[w.id];
+      var pp = p.t ? Math.round(p.d / p.t * 100) : 0;
+      return '<span><em>' + w.tag + '</em> <b>' + pp + '%</b> (' + p.d + '/' + p.t + ')</span>';
+    }).join('');
+
+    Object.keys(perDay).forEach(function(day){
+      var el = document.querySelector('[data-cnt="' + day + '"]');
+      if (!el) return;
+      var p = perDay[day];
+      el.textContent = p.d + '/' + p.t;
+      if (p.d === p.t) el.textContent = '✓ ' + p.t + '/' + p.t;
+    });
+  }
+
+  function save(){
+    var o = {};
+    WEEKS.forEach(function(w){ o[w.id] = {}; });
+    boxes.forEach(function(b){
+      if (b.checked) o[wkOf(b)][b.dataset.k] = 1;
+    });
+    WEEKS.forEach(function(w){
+      try { localStorage.setItem(w.key, JSON.stringify(o[w.id])); } catch(e){}
+    });
+  }
+
+  boxes.forEach(function(b){
+    if (saved[wkOf(b)][b.dataset.k]) b.checked = true;
+    b.addEventListener('change', function(){ save(); render(); });
+  });
+
+  document.getElementById('reset').addEventListener('click', function(){
+    if (!confirm('清空所有勾选？此操作不可撤销。')) return;
+    boxes.forEach(function(b){ b.checked = false; });
+    WEEKS.forEach(function(w){ try { localStorage.removeItem(w.key); } catch(e){} });
+    render();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
