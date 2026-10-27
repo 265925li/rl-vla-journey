@@ -1,0 +1,65 @@
+# Day 25 · MNIST + CNN + 数据增强 + BatchNorm
+#
+# 和 cnn_aug.yaml 的差别只有一行：bn: torch。
+# 其余全部一致 —— 这样"BN 有没有用"才是唯一变量。
+#
+# 跑法：
+#   & "E:\anaconda\envs\pytorch\python.exe" scripts\train.py `
+#         --config configs\cnn_bn.yaml --tag cnn_bn
+#
+# 想换成手写 BN（Day 25 七关对拍通过的那个）：
+#   & "E:\anaconda\envs\pytorch\python.exe" scripts\train.py `
+#         --config configs\cnn_bn.yaml --set bn=my --tag cnn_bn_my
+#
+# 想扫剂量（无 BN / BN / 大 lr 的两两组合）见 docs/Day25-BatchNorm.md §六。
+
+seed: 0
+device: cuda
+
+# ── 数据 ──
+data_dir: data
+batch_size: 128
+val_size: 6000
+num_workers: 0
+
+# ── 数据增强（Day 23/24，只作用于训练集）──
+augment_shift: 2.0    # ±2 像素
+augment_angle: 10.0   # ±10°
+
+# ── 模型：CNN + BN（Day 25 新增）──
+model: cnn
+flatten: false
+channels: "16,32"
+in_channels: 1
+conv: torch
+
+# bn 的三个取值：
+#   none  = 不加（= cnn_aug.yaml 的行为）
+#   torch = nn.BatchNorm2d
+#   my    = 手写 MyBatchNorm2d（src/utils/batchnorm.py）
+#
+# 插在 conv 和 act 之间：conv → BN → ReLU。
+# 为什么不是 conv → ReLU → BN：ReLU 把负半轴压成 0，
+# 先激活再 BN 的话那个通道有一半是死的，标准化之后死的还是死的。
+bn: torch
+
+hidden: 128
+act: relu
+dropout: 0.0          # Day 15 实测过，MNIST 上加 dropout 会让精度下降
+
+# ── 优化 ──
+optimizer: sgd
+lr: 0.05              # 注意：这里**没有**因为加了 BN 就放大 lr。
+                      # BN 的经典卖点是"允许更大 lr"，但那要单独验证
+                      # （见 Day 25 讲义 §六 的 lr=0.1 两组）。
+                      # 默认配置保持和 cnn_aug 一致，才比得出来。
+momentum: 0.9
+epochs: 25            # 同 Day 24 口径。轮数不够会让结论反过来（Day 24 的教训）。
+scheduler: none
+
+# ── 早停 ──
+# 注意：做剂量扫描时要临时关掉（--set early_stop_patience=0），
+# 因为早停会截断曲线，不同组停在不同轮，比较就不公平了。
+# 这里的 3 是**正式训练**用的值。
+early_stop_patience: 3
+early_stop_metric: loss

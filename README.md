@@ -34,8 +34,8 @@
 | 目录 | 用途 | 说明 |
 |---|---|---|
 | `src/engine/` | **训练引擎** | 注册表、Trainer、训练循环、命令行。**换模型/数据集只改这里** |
-| `src/utils/` | 工具模块 | 日志、路径、config、seed、**手写的优化器 / 损失函数 / Linear 层 / 卷积** |
-| `src/models/` | 模型定义 | `mlp.py` · `cnn.py` |
+| `src/utils/` | 工具模块 | 日志、路径、config、seed、**手写的优化器 / 损失函数 / Linear / 卷积 / BatchNorm** |
+| `src/models/` | 模型定义 | `mlp.py` · `cnn.py`（`bn=none/torch/my`） |
 | `src/data/` | 数据加载与增强 | `mnist.py` · `augment.py`（**手写的仿射增强**，Day 23）· `batch_aug.py`（**整批增强，collate 层**，Day 24） |
 | `configs/` | 实验配置 | YAML 文件。超参写在配置里，不硬编码进代码 |
 | `scripts/` | 入口脚本 | 训练、对照实验、环境自检。**`check_env.py` 在这里** |
@@ -124,8 +124,9 @@ torch、算力等级、cuDNN、**真跑一次 fp16 矩阵乘**）、功能（aut
 **P0 已全部完成**：环境、配置系统、反向传播、训练循环、优化器、MNIST 端到端
 （test acc 98.00%）、过拟合与正则化、三个手写算子、通用训练模板。
 
-**P1 进行中**：Day 22 加了 CNN，MNIST 从 98.00% → **98.89%**
-（同参数量 20.7 万，差距来自结构而非容量），手写卷积七关对拍通过。
+**P1 进行中**（Day 22–25 完成）：CNN 0.9889 → 增强 25 轮 **0.9936** → BatchNorm 七关对拍通过。
+BN 在 MNIST 上**测不出精度提升**（t=1.57），但收敛快 2 倍（ep1 val_loss −41%）、
+过拟合收窄 78%（gap +0.27→+0.06pt）。
 
 ```powershell
 cd "E:\work Buddy\强化学习\rl-vla-journey"
@@ -145,6 +146,7 @@ $PY = "E:\anaconda\envs\pytorch\python.exe"
 & $PY src\utils\losses.py --train     # Day 16  损失函数七关
 & $PY src\utils\layers.py --train     # Day 17  线性层七关
 & $PY src\utils\conv.py --train       # Day 22  卷积七关
+& $PY src\utils\batchnorm.py --train  # Day 25  BatchNorm 七关
 
 # ── 模型自测（结构 / 形状流 / 感受野）─────────────────────────
 & $PY src\models\mlp.py               # Day 10  MLP 三关
@@ -175,6 +177,14 @@ $PY = "E:\anaconda\envs\pytorch\python.exe"
       # 关早停跑满 25 轮 → test 99.36%（多花 92s 买 3 条样本）
 & $PY scripts\train.py --config configs\cnn_mnist.yaml `
       --set augment_shift=2 --set augment_angle=10 --epochs 15
+
+# ── 加 BatchNorm（Day 25）────────────────────────────────────
+& $PY scripts\train.py --config configs\cnn_bn.yaml --tag cnn_bn
+      # 与 cnn_aug.yaml 只差一行 bn: torch
+& $PY scripts\train.py --config configs\cnn_bn.yaml --set bn=my --tag cnn_bn_my
+      # 换手写 BatchNorm（七关对拍通过）
+& $PY scripts\train.py --config configs\cnn_bn.yaml --set bn=none --tag no_bn
+      # 关掉 BN 做对照
 
 # ── 对照实验与教学脚本 ────────────────────────────────────────
 & $PY scripts\run_ablation.py --epochs 10   # 四组正则化对照（约 6 分钟）
