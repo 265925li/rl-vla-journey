@@ -15,7 +15,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import datasets, transforms
 
-from src.data.augment import AugmentedDataset
+from src.data.batch_aug import build_train_loader
 from src.utils.seed import make_generator
 
 # ── 数据集的固定形状 ─────────────────────────────────────────────────
@@ -104,15 +104,19 @@ def build_loaders(cfg) -> tuple[DataLoader, DataLoader, DataLoader]:
     """
     train_set, val_set, test_set = build_datasets(cfg)
 
-    # ── Day 23：数据增强只挂在训练集上 ─────────────────────────────
-    # 这一段的**位置**就是全部重点：包装发生在 train_set 上，
-    # val_set / test_set 原样返回，一个字都不碰。
+    # ── Day 23/24：数据增强只挂在训练集上 ─────────────────────────
+    # 这一段的**位置**就是全部重点：增强只进 train_loader，
+    # val_loader / test_loader 原样构造，一个字都不碰。
     #
     # 为什么这么较真：一旦给验证集也加了随机变换，val_loss 会变成
     # "一个随机变量的实现"，同一个模型的两次评估能差出好几个百分点。
     # 早停靠 val_loss 判断"有没有变好"，而测量本身带随机噪声时，
     # 早停就会在随机抖动上触发 —— 你会得到一个完全无法复现的停止点。
     # Day 15 已经吃过一次"判据选错导致结论相反"的亏，这次直接从结构上杜绝。
+    #
+    # Day 24 的变化：增强从「Dataset.__getitem__ 里逐张做」
+    # 挪到「collate_fn 里整批做」。数值上完全等价（src/data/batch_aug.py
+    # 的关 4 用逐位对拍证明了这一点），但每轮省掉 20 秒。
     shift = float(cfg.augment_shift)
     angle = float(cfg.augment_angle)
     if shift > 0 or angle > 0:
@@ -124,15 +128,14 @@ def build_loaders(cfg) -> tuple[DataLoader, DataLoader, DataLoader]:
                 f"平移超过 {IMAGE_SIZE // 2} 像素会把内容整个推出画面，"
                 "增强出来的图基本全黑，模型学不到东西还不报错。"
             )
-        train_set = AugmentedDataset(train_set, shift, angle, seed=cfg.seed)
 
-    train_loader = DataLoader(
+    train_loader = build_train_loader(
         train_set,
         batch_size=cfg.batch_size,
-        shuffle=True,                        # 每个 epoch 重新打乱
-        generator=make_generator(cfg.seed),  # 打乱用哪条随机流
-        num_workers=cfg.num_workers,         # Windows 上先用 0，多进程容易出怪问题
-        drop_last=False,                     # 最后一批不满也保留（Day 11 算过这个）
+        seed=cfg.seed,
+        max_shift=shift,
+        max_angle=angle,
+        num_workers=cfg.num_workers,
     )
     val_loader = DataLoader(
         val_set, batch_size=cfg.batch_size, shuffle=False, num_workers=cfg.num_workers

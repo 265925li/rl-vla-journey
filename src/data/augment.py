@@ -272,18 +272,67 @@ def random_affine(
     if max_shift <= 0 and max_angle <= 0:
         return x
 
-    # torch.rand 采样 [0, 1)，乘 2 减 1 得到 [-1, 1)，再乘最大幅度
-    def uni(scale: float) -> torch.Tensor:
-        if scale <= 0:
-            return torch.zeros(n, dtype=x.dtype)
-        return (torch.rand(n, generator=gen, dtype=x.dtype) * 2.0 - 1.0) * scale
-
-    tx = uni(float(max_shift))
-    ty = uni(float(max_shift))
-    ang = uni(float(max_angle))
-
+    tx, ty, ang = sample_params(n, max_shift, max_angle, gen, dtype=x.dtype)
     theta = make_theta(tx, ty, ang, image_size=x.shape[-1])
     return warp(x, theta)
+
+
+def sample_params(
+    n: int,
+    max_shift: float,
+    max_angle: float,
+    gen: torch.Generator | None = None,
+    dtype: torch.dtype = torch.float32,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """抽 n 组（平移 x、平移 y、旋转角），每组三个数。
+
+    ── 为什么是「一次抽 3n 个再 reshape」，而不是「分三次各抽 n 个」──────
+
+    这是 Day 24 唯一改了数值行为的地方，值得说透。
+
+    旧写法（Day 23）：
+
+        tx  = rand(n)      # 消耗 n 个随机数
+        ty  = rand(n)      # 消耗 n 个
+        ang = rand(n)      # 消耗 n 个
+
+    新写法：
+
+        raw = rand((n, 3)) # 一次消耗 3n 个，行优先排列
+
+    单个样本 n=1 时两者**完全一样**：都拿到同一串的三个连续数
+    (r0, r1, r2)。所以 Day 23 的最优组（±2 像素 + ±10°，逐样本调用）
+    的随机序列一个数都没变 —— 这点已由实跑逐位验证。
+
+    但 n>1 时两者不同，而且差异正是关键：
+
+        旧：样本 i 拿到 (r[i], r[n+i], r[2n+i])      ← 依赖 n
+        新：样本 i 拿到 (r[3i], r[3i+1], r[3i+2])    ← 与 n 无关
+
+    旧写法的每个样本拿到的参数**取决于批大小**。这意味着：
+    把 batch_size 从 128 改成 64，同一张图从第 128 个位置变成
+    第 64 个位置，它拿到的平移量就变了 —— 改批大小会**悄悄改变增强强度**，
+    而 batch_size 本来是个"只影响速度不影响结果"的量。
+    这种耦合在扫剂量时会致命：你以为只改了批大小，其实改了剂量。
+
+    新写法把"第 i 个样本的参数"钉死成 r[3i..3i+2]，于是：
+        · 批大小无关
+        · 一次抽 384 个 == 逐样本抽 128 次各 3 个（因为 MT19937 是流式的，
+          rand(n) 与 n 次 rand(1) 得到同一串 —— 已实测确认）
+
+    第二条正是 Day 24 能做到「整批增强与逐样本增强逐位对拍」的全部前提。
+    Day 22 换算法能对拍到 0.00e+00，Day 23 换数值路径只能对拍到 1e-15，
+    今天换的是**执行时机**，本来以为又要退一步只比统计量，
+    把随机消耗也改成批大小无关之后，对拍回到了逐位。
+    """
+    if n <= 0:
+        raise ValueError(f"n 必须为正，收到 {n}")
+
+    raw = torch.rand((n, 3), generator=gen, dtype=dtype)
+    # [0,1) → [-1,1) → 乘各自幅度
+    scale = torch.tensor([max_shift, max_shift, max_angle], dtype=dtype)
+    p = (raw * 2.0 - 1.0) * scale
+    return p[:, 0], p[:, 1], p[:, 2]
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -638,23 +687,19 @@ def gate7_real_data() -> bool:
     assert abs(m1 - m0) / m0 < 0.15, "均值变化过大，增强可能过猛"
     assert 0.7 < s1 / s0 < 1.4, f"标准差变化 {s1 / s0:.2f} 倍，超出合理范围"
 
-    # ── 最重要的一条：验证集 / 测试集绝不能被包装 ────────────────────
+    # ── 最重要的一条：验证集 / 测试集绝不能被增强 ────────────────────
     from src.data.mnist import build_loaders
 
-    # ⚠️ 必须从**包路径**导入用来做 isinstance 的那个类，不能直接用本模块的。
-    #
-    # 这个文件用 `python src/data/augment.py` 跑时，它自己被加载成模块 "__main__"；
-    # 而 mnist.py 里 `from src.data.augment import AugmentedDataset` 会把
-    # 同一个源文件**再加载一遍**成模块 "src.data.augment"。
-    # 于是内存里存在两个内容相同、但**对象不同**的类，
-    # __main__.AugmentedDataset 和 src.data.augment.AugmentedDataset
-    # 互不 isinstance —— 我第一版就是这么挂的，报错信息说"增强没生效"，
-    # 但其实增强好得很，是断言用错了类。
-    from src.data.augment import AugmentedDataset as CanonicalAugDataset
+    # ⚠️ Day 24 更新：判据从「train_set 是不是被 AugmentedDataset 包了」
+    # 改成「train_loader 的 collate_fn 上有没有增强标记」。
+    # 因为 Day 24 把增强从 Dataset 层挪到了 collate 层（数值完全等价，
+    # 但每轮快 20 秒）。判据必须跟着实现走 —— 否则这一关会一直报
+    # "增强没生效"，而增强其实好得很。**关卡本身也会过期。**
+    from src.data.batch_aug import has_augment
 
     cfg = Config(data_dir=str(data_dir), augment_shift=2, augment_angle=10)
     tr, va, te = build_loaders(cfg)
-    is_aug = [isinstance(d.dataset, CanonicalAugDataset) for d in (tr, va, te)]
+    is_aug = [has_augment(d) for d in (tr, va, te)]
     print(f"    train/val/test 是否被增强：{is_aug}   （必须是 [True, False, False]）")
     assert is_aug == [True, False, False], (
         f"增强装错了地方：{is_aug}。\n"
