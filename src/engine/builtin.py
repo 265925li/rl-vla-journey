@@ -14,7 +14,9 @@ import torch.nn as nn
 
 from src.data.mnist import IN_DIM, NUM_CLASSES, build_loaders
 from src.engine.registry import register_dataset, register_model
+from src.models.cnn import CNN, expected_params_cnn
 from src.models.mlp import MLP
+from src.utils.config import parse_channels
 from src.utils.layers import MyLinear
 
 
@@ -95,4 +97,76 @@ def build_mlp(cfg) -> nn.Module:
     assert actual == manual, (
         f"MLP 参数量对不上：运行时 {actual} vs 手算 {manual}（差 {actual - manual}）"
     )
+    return model
+
+
+@register_model("cnn")
+def build_cnn(cfg) -> nn.Module:
+    """两层卷积 + 两层全连接的小 CNN（Day 22）。
+
+    ── Day 18 那次重构在这一刻兑现了 ────────────────────────────────
+    加这个模型，一共只改了**两个文件**：
+
+        src/models/cnn.py            新建
+        src/engine/builtin.py        就是下面这十几行
+
+    trainer.py / cli.py / loops.py / registry.py **一个字都没动**。
+    这不是巧合，是 Day 18 把「谁认识具体模型」限制在一个文件里的结果。
+    验证方法：`grep -n cnn src/engine/trainer.py src/engine/cli.py`
+    在 Day 22 实测是 **0 行**。
+
+    ── 三个参数怎么从 cfg 传进来 ───────────────────────────────────
+    cfg.channels   "16,32" 字符串 → parse_channels() → (16, 32)
+                   （解析在校验阶段已经跑过一次了，能走到这行就说明格式合法）
+    cfg.in_channels  1（MNIST 灰度）。换成 RGB 数据集时这里要改
+    cfg.conv       torch / my —— 选 nn.Conv2d 还是手写 MyConv2d
+    """
+    # 延迟 import：只有真正用 cnn 模型时才需要 conv.py。
+    # 不用 cnn 的实验（比如纯 MLP 对照）完全不会碰到它 ——
+    # 万一 conv.py 写坏了，也不会影响别的模型。
+    conv_cls = nn.Conv2d
+    if cfg.conv == "my":
+        from src.utils.conv import MyConv2d
+        conv_cls = MyConv2d
+
+    channels = parse_channels(cfg.channels)
+    model = CNN(
+        in_channels=cfg.in_channels,
+        channels=channels,
+        hidden=cfg.hidden,
+        out_dim=NUM_CLASSES,
+        dropout=cfg.dropout,
+        act=cfg.act,
+        conv_cls=conv_cls,
+    )
+
+    # ── 参数量对账（和 MLP 同一个套路，公式换成卷积的）────────────
+    # CNN 的参数量算法和 MLP 完全不同（卷积层是 C_out·(C_in·kh·kw+1)），
+    # 所以这段检查**必须写在 build_cnn 里**，不能提到 Trainer 去。
+    # 这正是 Day 18 定的规矩：模型自己负责自己的自检。
+    actual = sum(p.numel() for p in model.parameters())
+    manual = expected_params_cnn(
+        in_channels=cfg.in_channels,
+        channels=channels,
+        hidden=cfg.hidden,
+        out_dim=NUM_CLASSES,
+    )
+    assert actual == manual, (
+        f"CNN 参数量对不上：运行时 {actual} vs 手算 {manual}（差 {actual - manual}）\n"
+        f"  配置：in_channels={cfg.in_channels} channels={channels} hidden={cfg.hidden}\n"
+        "  常见原因：池化层数改了但公式没跟着改、channels 解析成了别的值"
+    )
+
+    # ── 一个只有 CNN 才会犯的配置错误，在这里拦掉 ─────────────────
+    # flatten=true 会让 Trainer 先把 (B,1,28,28) 摊成 (B,784)，
+    # 然后 conv1 收到 2 维输入才报错。虽然会报错，但报错点在卷积层，
+    # 而错因在 yaml —— 隔了一个文件，不好查。
+    # 在这里提前拦，报错信息就能直接说清楚「去改 yaml」。
+    if cfg.flatten:
+        raise ValueError(
+            "model=cnn 但 flatten=true。CNN 需要 4 维输入 (B,C,H,W)，"
+            "必须在配置里写 flatten: false。\n"
+            "  为什么必须手动关：框架无法知道哪个模型还要空间结构，"
+            "所以它是显式开关（见 config.py 里 flatten 那段注释）。"
+        )
     return model

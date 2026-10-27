@@ -1,0 +1,56 @@
+# Day 22 · MNIST + CNN
+#
+# 和 configs/mnist_mlp.yaml 的差别只有七行（model / flatten / channels /
+# in_channels / conv / hidden / lr）。
+# 训练脚本、Trainer、循环、日志格式**全部没变** —— 这就是 Day 18 重构的回报。
+#
+# 跑法：
+#   & "E:\anaconda\envs\pytorch\python.exe" scripts\train.py `
+#         --config configs\cnn_mnist.yaml --tag cnn
+#
+# 换成手写卷积（Day 22 关 7 验过，30 步参数差 2.98e-08）：
+#   & "E:\anaconda\envs\pytorch\python.exe" scripts\train.py `
+#         --config configs\cnn_mnist.yaml --set conv=my --tag cnn_myconv
+
+seed: 0
+device: cuda
+
+# ── 数据 ──
+data_dir: data
+batch_size: 128
+val_size: 6000
+num_workers: 0
+
+# ── 模型：CNN ──
+model: cnn
+#
+# ⚠️ 这一行是今天最容易忘的。默认值是 true（给 MLP 用的），
+#    CNN 必须手动关掉 —— 卷积要的就是 28×28 的空间结构。
+#    忘了关会在 build_cnn 里当场报错，不会跑到训练中期。
+flatten: false
+#
+channels: "16,32"   # 两个卷积层的输出通道数。加引号是为了让它当字符串解析
+in_channels: 1      # MNIST 灰度图 = 1。RGB 数据集要改成 3
+conv: torch         # torch = nn.Conv2d / my = 手写 MyConv2d
+hidden: 128         # 全连接层宽度（注意不是 256 —— CNN 特征维度是 1568，不需要那么宽）
+act: relu
+dropout: 0.0        # 保持 0：Day 15 实测，MNIST + 这个规模加正则化会让精度下降
+
+# ── 优化 ──
+# lr 从 0.1 降到 0.05。为什么：
+#   MLP 的梯度要穿过 784 个输入，CNN 只有 9 个（3×3 窗口）；
+#   卷积层的梯度天然更大（每个权重被图里每个位置都用到一次），
+#   同样的 lr 在 CNN 上更容易震荡。
+#   这不是"调参"，是结构变了之后必须跟着改的一处。
+optimizer: sgd
+lr: 0.05
+momentum: 0.9
+epochs: 10
+scheduler: none
+
+# ── 早停（默认关闭）──
+# Day 15 的教训：早停判据选 loss 还是 acc 会给出**相反**的结论
+# （acc 判据 9 轮停 0.9782，loss 判据跑满 10 轮 0.9800）。
+# 今天要和 MLP 对比，必须两边都不早停，跑满同样轮数才可比。
+early_stop_patience: 0
+early_stop_metric: loss

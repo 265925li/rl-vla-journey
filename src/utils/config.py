@@ -41,6 +41,8 @@ ALLOWED_LINEARS = ("torch", "my")
 # Day 18 新增：早停判据。两种判据在实测里给出**相反**的结论（Day 15），
 # 所以要能选，而且选了哪个必须记进 config.yaml
 ALLOWED_ES_METRICS = ("loss", "acc")
+# Day 22 新增：卷积层实现。my = 手写 MyConv2d（src/utils/conv.py，七关对拍通过）
+ALLOWED_CONVS = ("torch", "my")
 
 # ⚠️ 注意这里**没有** ALLOWED_MODELS / ALLOWED_DATASETS。
 # 那两张表在 src/engine/registry.py 里，由 builtin.py 注册填充。
@@ -51,6 +53,45 @@ ALLOWED_ES_METRICS = ("loss", "acc")
 # 代价是「模型名拼错」不会在读配置那一刻报错，而是在 Trainer.build() 里报。
 # 这个代价可以接受，因为：(1) 它仍在训练的第一秒内，不是第 1000 步；
 # (2) registry 的报错信息带「已注册的有 [...]」，比这里能给的更有用。
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 0b. 小工具：把 "16,32" 解析成 (16, 32)
+# ═══════════════════════════════════════════════════════════════════
+def parse_channels(value) -> tuple[int, ...]:
+    """把配置里的 channels 解析成整数元组。
+
+    接受四种写法（都是为了让人少踩坑）：
+        "16,32"        yaml / --set 里的标准写法
+        "16, 32"       带空格 —— yaml 里手写很容易带
+        [16, 32]       yaml 里写成列表（safe_load 会读成 Python list）
+        16             单个整数 → 解析成 (16,)
+
+    为什么不在 yaml 里直接写列表就完事：
+        `--set channels=8,16` 从命令行进来**永远是字符串**。
+        如果 Config 里声明成 list、yaml 里写 list，
+        那么 yaml 那条路是 list、--set 那条路是 str，两条路类型不一致。
+        类型不一致的配置是最难查的 bug —— 它在某个分支里才会炸。
+        统一用字符串 + 一个解析函数，两条路就都通了。
+    """
+    if isinstance(value, (list, tuple)):
+        parts = [int(v) for v in value]
+    else:
+        # 顺手支持中文逗号：中文输入法下打 , 和 ，长得几乎一样
+        text = str(value).replace("，", ",")
+        raw = [p.strip() for p in text.split(",") if p.strip()]
+        try:
+            parts = [int(p) for p in raw]
+        except ValueError:
+            raise ValueError(
+                f"channels 要写成逗号分隔的整数，比如 \"16,32\"，收到 {value!r}"
+            ) from None
+
+    if not parts:
+        raise ValueError(f"channels 不能为空，收到 {value!r}")
+    if any(p < 1 for p in parts):
+        raise ValueError(f"channels 里每个通道数都必须 >= 1，收到 {value!r}")
+    return tuple(parts)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -112,6 +153,17 @@ class Config:
     # my    = 手写 MyLinear（src/utils/layers.py，七关对拍通过）
     # 换它比换 loss 更彻底：这个模型里所有全连接层都会被替掉
     linear: str = "torch"
+
+    # ── Day 22 新增：卷积（CNN）────────────────────────────────────
+    # 两个卷积层的输出通道数。写成 "16,32" 这种字符串而不是 list，
+    # 是为了让 `--set channels=8,16` 也能用 —— 命令行传进来的永远是字符串，
+    # 如果这里声明成 list，--set 就会塞一个字符串进去，类型悄悄不一致。
+    # 解析统一走 parse_channels()，解析不了当场报错。
+    channels: str = "16,32"
+    in_channels: int = 1            # 输入通道数：MNIST 灰度图 = 1，RGB = 3
+    # torch = nn.Conv2d
+    # my    = 手写 MyConv2d（Day 22 七关对拍通过，30 步参数差 2.98e-08）
+    conv: str = "torch"
 
     # ── Day 13 新增：优化 ──────────────────────────────────────────
     optimizer: str = "sgd"          # sgd / adam / mysgd（自己手写的那个）
@@ -207,6 +259,17 @@ class Config:
             raise ValueError(
                 f"early_stop_patience 不能为负（0 表示关闭），你给的是 {self.early_stop_patience}"
             )
+
+        # ── Day 22 新增：CNN 相关校验 ──────────────────────────────
+        if self.conv not in ALLOWED_CONVS:
+            raise ValueError(
+                f"conv 只能是 {ALLOWED_CONVS} 之一（my = 手写版），你给的是 {self.conv!r}"
+            )
+        if self.in_channels < 1:
+            raise ValueError(f"in_channels 必须 >= 1，你给的是 {self.in_channels}")
+        # 在入口就把 channels 解析一次。解析不了 = 配置写错，当场报。
+        # 好处是后面 build_cnn 拿到的一定是合法的两个正整数。
+        parse_channels(self.channels)
         # ─────────────────────────────────────────────────────────────
         # ─────────────────────────────────────────────────────────────
 
