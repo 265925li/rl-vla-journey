@@ -96,8 +96,20 @@ def make_augment_collate(
     max_shift: float = 0.0,
     max_angle: float = 0.0,
     gen: torch.Generator | None = None,
+    seed: int = 0,
 ):
     """返回一个带增强的 collate_fn。
+
+    ⚠️ Day 27 改过：原来返回的是**闭包**，现在返回一个类实例。
+    原因：闭包**不能被 pickle**，而 Windows 上 DataLoader 用 spawn，
+    子进程要靠 pickle 把 collate_fn 传过去 ——
+    于是 `num_workers>0` 在挂增强时**根本起不来**，报
+
+        AttributeError: Can't pickle local object
+        'make_augment_collate.<locals>.collate'
+
+    这个错误在 Day 23/24 从没暴露过，因为那两天一直是 num_workers=0。
+    **不是新引入的 bug，是原来那条路根本没被走过。**
 
     DataLoader 的工作流程是：
 
@@ -114,32 +126,93 @@ def make_augment_collate(
     如果对 list 里的每张图单独 warp 再 stack，那就是 Day 23 的做法，
     一点没省。省下来的全部来自"一次算子调用处理 128 张"。
 
-    ── gen 从哪来 ────────────────────────────────────────────────
-    和 Day 23 一样，必须是独立的一条随机流，不能和 shuffle 共用。
-    区别是它现在挂在闭包上，生命周期跟 DataLoader 一样长
-    （每个 epoch 结束时它已经消耗了 3×N 个随机数，所以下一个
-    epoch 的变换自然是新的 —— 不需要任何"换一轮"的代码）。
-
     ── 关闭增强时不留痕迹 ────────────────────────────────────────
     max_shift 和 max_angle 都是 0 时，random_affine 直接 return x，
     **连一个随机数都不抽**。所以 augment=0 的路径和 Day 22 的原始管线
-    在数值上完全等价（这一点在关 4 里断言）。
+    在数值上完全等价（这一点在关 5 里断言）。
+
+    ── per_worker_gen ────────────────────────────────────────────
+    见 AugmentCollate 里那段：这是 num_workers>0 时唯一能保住
+    "增强多样性"的开关，代价是失去与 num_workers=0 的逐位可比性。
+    """
+    return AugmentCollate(
+        max_shift=max_shift, max_angle=max_angle, gen=gen, seed=seed
+    )
+
+
+class AugmentCollate:
+    """可 pickle 的批级增强 collate。
+
+    为什么是一个类而不是闭包：spawn 只能传**可 pickle** 的东西，
+    而闭包捕获了局部变量，pickle 无法重建它。类可以（只要字段可 pickle，
+    `torch.Generator` 恰好是可 pickle 的）。
+
+    ── 一个必须讲清楚的坑：generator 会被"复制"给每个 worker ──────
+    `num_workers=W` 时，这个对象被 pickle 到 W 个子进程，**每份都是
+    一模一样的副本**，包括 `self.gen` 的当前状态。
+
+    于是 worker 0 抽的第 1 组随机数 == worker 1 抽的第 1 组 == ……
+    而 batch i 由 worker (i mod W) 处理，所以 **batch 0..W-1 拿到的是
+    同一组增强参数**。W=4 时效果就是"每 4 个批里有 1 组参数被重复用 4 次"，
+    增强剂量实际上被打了折 —— 而且 loss 曲线完全正常，看不出来。
+
+    两种应对：
+      · per_worker_gen=False（默认）：保持"与 num_workers=0 逐位一致"，
+        但 W>1 时增强会重复。适合"我要可复现"的对照实验。
+      · per_worker_gen=True：每个 worker 用 `seed + worker_id` 派生
+        自己的流，多样性恢复；但这时 num_workers=0/2/4 的结果**不再相同**。
+        适合"我只关心效果、不要求逐位对拍"的长训练。
+
+    **这两个目标不能同时满足。** 因为单条顺序流被切成 W 条之后，
+    就再也拼不回原来那条的顺序 —— 除非把随机流改成"按批号索引"，
+    而那需要 sampler、dataset、collate 三处一起改（见讲义「还能怎么做」）。
     """
 
-    def collate(batch):
+    def __init__(self, max_shift=0.0, max_angle=0.0, gen=None, seed=0,
+                 per_worker_gen: bool = False) -> None:
+        self.max_shift = float(max_shift)
+        self.max_angle = float(max_angle)
+        self.seed = int(seed)
+        self.per_worker_gen = bool(per_worker_gen)
+        self.gen = gen
+        # 打个标记，让外面能判断"这个 DataLoader 到底有没有挂增强"。
+        # 为什么不靠 `collate_fn is not default_collate` 来判：那只能说明
+        # "不是默认的"，说不出它是不是增强。
+        # （Day 23 的关 7 就是靠 isinstance 判挂载位置的，换成 collate 之后
+        #  必须跟着换成断言"行为特征"—— 这条教训见 Day 23。）
+        self.__augment__ = {"max_shift": self.max_shift,
+                            "max_angle": self.max_angle}
+
+    def _gen(self):
+        """拿到本进程该用的 generator。
+
+        per_worker_gen=False：直接用构造时传进来的那条（与单进程一致）。
+        per_worker_gen=True ：按 worker_id 派生。**注意要在子进程里懒创建**，
+        不能在 __init__ 里建 —— __init__ 跑在父进程，那时还不知道 worker_id。
+        """
+        if not self.per_worker_gen:
+            if self.gen is None:
+                self.gen = torch.Generator()
+                self.gen.manual_seed(self.seed)
+            return self.gen
+
+        if self.gen is None:
+            info = torch.utils.data.get_worker_info()
+            wid = info.id if info is not None else 0
+            # 用一个大质数错开，避免 seed=0,1 与 wid=0,1 撞出同一条流
+            g = torch.Generator()
+            g.manual_seed(self.seed * 1_000_003 + wid)
+            self.gen = g
+        return self.gen
+
+    def __call__(self, batch):
         xs, ys = default_collate(batch)
-        xs = random_affine(xs, max_shift, max_angle, gen)
+        xs = random_affine(xs, self.max_shift, self.max_angle, self._gen())
         return xs, ys
 
-    # 打个标记，让外面能判断"这个 DataLoader 到底有没有挂增强"。
-    # 为什么不靠 `collate_fn is not default_collate` 来判：那只能说明
-    # "不是默认的"，说不出它是不是增强。为什么不用 isinstance：
-    # 闭包函数没有可用的类型。挂一个属性最直白，也让自测有个可靠的判据
-    # （Day 23 的关 7 就是靠 isinstance 判挂载位置的，换成 collate 之后
-    #  那一关的判据必须跟着换，否则会误报"增强没生效"）。
-    collate.__augment__ = {"max_shift": max_shift, "max_angle": max_angle}
-
-    return collate
+    def __repr__(self) -> str:
+        return (f"AugmentCollate(shift={self.max_shift}, angle={self.max_angle}, "
+                f"per_worker_gen={self.per_worker_gen})")
 
 
 def has_augment(loader: DataLoader) -> bool:
@@ -154,18 +227,31 @@ def build_train_loader(
     max_shift: float = 0.0,
     max_angle: float = 0.0,
     num_workers: int = 0,
+    per_worker_gen: bool = False,
+    pin_memory: bool = False,
 ) -> DataLoader:
     """把「打乱 + 增强」装进一个 DataLoader。
 
     抽出来单独一个函数，是为了让 src/data/mnist.py 里那一段
     "到底怎么装增强"只有一处，改的时候不会漏。
+
+    参数 per_worker_gen：只在 num_workers>0 且挂了增强时起作用。
+        False（默认）→ 与 num_workers=0 逐位一致，但 W>1 时增强会重复
+        True         → 增强多样性正确，但失去与 num_workers=0 的逐位可比性
+        两者不可兼得，详见 AugmentCollate 的 docstring。
     """
     gen = torch.Generator()
     gen.manual_seed(seed)
 
     kwargs = {}
     if max_shift > 0 or max_angle > 0:
-        kwargs["collate_fn"] = make_augment_collate(max_shift, max_angle, gen)
+        kwargs["collate_fn"] = make_augment_collate(
+            max_shift, max_angle, gen, seed=seed
+        )
+        # 只在需要时把 per_worker_gen 打开 —— 默认关闭，保住可对拍性
+        if per_worker_gen and num_workers > 0:
+            kwargs["collate_fn"].per_worker_gen = True
+            kwargs["collate_fn"].gen = None      # 让它在子进程里懒创建
 
     return DataLoader(
         train_set,
@@ -176,6 +262,10 @@ def build_train_loader(
         generator=make_generator(seed),
         num_workers=num_workers,
         drop_last=False,
+        pin_memory=pin_memory,
+        # ⚠️ 不要再加 worker_init_fn 去改 generator：generator 是 collate
+        # 对象自己的字段，worker_init_fn 拿不到它。
+        # 按 worker 分流只有一条路：在子进程里懒创建（per_worker_gen）。
         **kwargs,
     )
 

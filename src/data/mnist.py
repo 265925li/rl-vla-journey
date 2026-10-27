@@ -16,6 +16,7 @@ from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import datasets, transforms
 
 from src.data.batch_aug import build_train_loader
+from src.data.fast_mnist import wrap_backend
 from src.utils.seed import make_generator
 
 # ── 数据集的固定形状 ─────────────────────────────────────────────────
@@ -103,6 +104,19 @@ def build_loaders(cfg) -> tuple[DataLoader, DataLoader, DataLoader]:
     没有坏处，但会造成一种误解：以为"传了 generator 就 reproducible 了"。
     """
     train_set, val_set, test_set = build_datasets(cfg)
+
+    # ── Day 27：换数据后端（必须在这三行之前，且只换一次）───────────
+    # 为什么放在这里而不是 build_datasets 里：
+    # build_datasets 的职责是"切出三个正确的集合"，它不该关心"怎么读得更快"。
+    # 换后端是纯性能动作，独立成一步更容易关掉对照 ——
+    # `--set data_backend=pil` 就能回到 Day 26 的行为。
+    #
+    # 数值上**逐位相同**（Day 27 关 1/关 2/关 3 用 0.00e+00 证明），
+    # 所以这一步不改变任何实验结论，只改变跑多久。
+    backend = getattr(cfg, "data_backend", "pil")
+    train_set = wrap_backend(train_set, backend)
+    val_set = wrap_backend(val_set, backend)
+    test_set = wrap_backend(test_set, backend)
 
     # ── Day 23/24：数据增强只挂在训练集上 ─────────────────────────
     # 这一段的**位置**就是全部重点：增强只进 train_loader，
