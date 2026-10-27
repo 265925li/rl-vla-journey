@@ -212,8 +212,10 @@ $PY = "E:\anaconda\envs\pytorch\python.exe"
 & $PY scripts\bench_data.py           # 三张表：数据侧拆解 / 后端阶梯 / num_workers 总账
 
 # ── 盲写 train_step（Day 28）─────────────────────────────────
-& $PY scripts\blind_train_step.py     # 只填空 train_step，四关判对错
+& $PY scripts\blind_train_step.py           # 不带 --check 只打印说明
+& $PY scripts\blind_train_step.py --check   # 跑四关判对错
       # 前置：删掉函数体里 `todo = False` + `assert todo` 那四行，写你自己的实现
+      # 现在跑 --check 是 0/4（未填状态），填完应 4/4
 
 # ── 对照实验与教学脚本 ────────────────────────────────────────
 & $PY scripts\run_ablation.py --epochs 10   # 四组正则化对照（约 6 分钟）
