@@ -167,10 +167,12 @@ $PY = "E:\anaconda\envs\pytorch\python.exe"
 & $PY scripts\train.py --config configs\cnn_mnist.yaml --set conv=my `
       --tag cnn_myconv                                                     # 换手写卷积
 
-# ── 加数据增强（Day 23，25 轮成绩见 Day 24）───────────────────
-& $PY scripts\train.py --config configs\cnn_aug.yaml --tag cnn_aug          # 15 轮 99.15%
-& $PY scripts\train.py --config configs\cnn_aug.yaml --epochs 25 `
-      --tag cnn_aug25                                                     # 25 轮 99.36%
+# ── 加数据增强（Day 23/24；轮数与早停的取舍见 Day24 讲义 §7）─────
+& $PY scripts\train.py --config configs\cnn_aug.yaml --tag cnn_aug
+      # 25 轮上限，早停 p=3 实际停 19 轮 → test 99.33%（省 92s）
+& $PY scripts\train.py --config configs\cnn_aug.yaml `
+      --set early_stop_patience=0 --tag cnn_aug25
+      # 关早停跑满 25 轮 → test 99.36%（多花 92s 买 3 条样本）
 & $PY scripts\train.py --config configs\cnn_mnist.yaml `
       --set augment_shift=2 --set augment_angle=10 --epochs 15
 
