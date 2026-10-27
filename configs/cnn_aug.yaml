@@ -1,0 +1,58 @@
+# Day 23 · MNIST + CNN + 数据增强
+#
+# 和 cnn_mnist.yaml 的差别只有四行：epochs / augment_shift / augment_angle /
+# early_stop_patience。模型结构、优化器、lr 一个字都没改 ——
+# 这样"增强有没有用"才是唯一变量，否则又是同时改三处、出错无法归因。
+#
+# 跑法：
+#   & "E:\anaconda\envs\pytorch\python.exe" scripts\train.py `
+#         --config configs\cnn_aug.yaml --tag cnn_aug
+#
+# 想扫剂量（一次跑 5 组，并做早停离线分析）：
+#   & "E:\anaconda\envs\pytorch\python.exe" scripts\sweep_augment.py
+
+seed: 0
+device: cuda
+
+# ── 数据 ──
+data_dir: data
+batch_size: 128
+val_size: 6000
+num_workers: 0
+
+# ── 数据增强（Day 23 新增，只作用于训练集）──
+#
+# 单位是**像素**和**度**，不是 torchvision 那种比例。
+# 为什么用像素：28×28 上 translate=0.1 = 2.8 像素，
+# 换成 224×224 的图同样的 0.1 = 22 像素，同一配置含义完全不同；
+# 而且比例写法没法表达"就动 1 个像素"，那就没法扫剂量。
+#
+# 具体给多少，看 scripts/sweep_augment.py 扫出来的结果，
+# 别照着这里的默认值当结论用。
+augment_shift: 2.0    # 最大随机平移 ±2 像素
+augment_angle: 10.0   # 最大随机旋转 ±10°
+
+# ── 模型：CNN（与 Day 22 完全一致，改它就不是对照实验了）──
+model: cnn
+flatten: false        # CNN 必须不摊平
+channels: "16,32"
+in_channels: 1
+conv: torch
+hidden: 128
+act: relu
+dropout: 0.0          # Day 15 实测过，MNIST 上加 dropout 会让精度下降
+
+# ── 优化 ──
+optimizer: sgd
+lr: 0.05
+momentum: 0.9
+epochs: 15            # 比 Day 22 的 10 轮多 5 轮：增强之后每轮的信息量变少，
+                      # 收敛需要的轮数会增加。这是预期内的，不是"训练变慢了"。
+scheduler: none
+
+# ── 早停 ──
+# Day 22 的 CNN 在 ep7 之后 val_loss 回升 39%，所以这里开启早停。
+# patience=3 配 loss 判据的依据在 scripts/sweep_augment.py 的第二节，
+# 那里用同一条曲线反推了 10 种策略，不是拍脑袋定的。
+early_stop_patience: 3
+early_stop_metric: loss
