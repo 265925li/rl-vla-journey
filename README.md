@@ -137,6 +137,15 @@ torch、算力等级、cuDNN、**真跑一次 fp16 矩阵乘**）、功能（aut
 > 四个"提速/提分"手段里只有一个真的加速了 —— 而它恰好是最不高级的那个。
 > 详见 [`docs/Day28`](docs/Day28-W4收口与盲写.md) §9.4。
 
+**W5 起转向原理优先**（Day 29–35：MDP · 贝尔曼 · 动态规划）：
+代码从「交付物」降级为「验收工具」，比例约 讲义 80% / 代码 20%。
+不再手写 `src/rl/` 下的算子模块，改为**推导 + 手算 + 小脚本验结论**。
+
+```powershell
+& $PY scripts\probe_mdp.py            # Day 29 五个实验：γ 杠杆 / 递归恒等 / 手算对拍
+& $PY scripts\probe_mdp.py --only E   # 只跑"马尔可夫性被破坏"那个
+```
+
 ```powershell
 cd "E:\work Buddy\强化学习\rl-vla-journey"
 $PY = "E:\anaconda\envs\pytorch\python.exe"
