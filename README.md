@@ -141,9 +141,14 @@ torch、算力等级、cuDNN、**真跑一次 fp16 矩阵乘**）、功能（aut
 代码从「交付物」降级为「验收工具」，比例约 讲义 80% / 代码 20%。
 不再手写 `src/rl/` 下的算子模块，改为**推导 + 手算 + 小脚本验结论**。
 
+Day 29–30 已完成：MDP 五元组与回报（`γ` 是杠杆，95 倍）→
+贝尔曼期望方程（矩阵形式 + 42 轮收敛到 `1e-12`，与理论 41.70 吻合）。
+
 ```powershell
 & $PY scripts\probe_mdp.py            # Day 29 五个实验：γ 杠杆 / 递归恒等 / 手算对拍
 & $PY scripts\probe_mdp.py --only E   # 只跑"马尔可夫性被破坏"那个
+& $PY scripts\probe_bellman.py        # Day 30 五个实验：边缘化 / 残差 / 两条路 / 转置坑 / 采样
+& $PY scripts\probe_bellman.py --only D   # 只跑"P 写反"那个（差 16%，不报错）
 ```
 
 ```powershell
