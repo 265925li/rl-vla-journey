@@ -185,6 +185,12 @@ W5 理论部分收口：**`V*` 的存在、唯一、最优策略的形状、收�
 > 两章挂在同一件事上：**第 7 章 TD 要同时打破「等终止」和「`g` 固定」两个前提**，
 > 这就是 TD 有偏的全部来源。
 
+**支线（不占 P1 主线进度）：FiLM EfficientNet-B3** ——
+RT-1 的视觉编码器，拆开是「骨干 + 条件化」。核心只有一个式子 `y=(1+γ)x+β`，
+`γ,β` 由语言向量算出来，逐通道广播。两条实测：**identity 初始化能让插入前后输出逐位相同（`0.000e+00`）**，
+不初始化则偏差达激活尺度的 108.5%；**「FiLM 轻量」说的是 FLOPs（比 attention 少 1024 倍），不是参数量（占骨干 31.3%）**。
+讲义 [`docs/VLA-FiLM与EfficientNet.md`](docs/VLA-FiLM与EfficientNet.md)。
+
 ```powershell
 & $PY scripts\probe_mdp.py            # Day 29 五个实验：γ 杠杆 / 递归恒等 / 手算对拍
 & $PY scripts\probe_mdp.py --only E   # 只跑"马尔可夫性被破坏"那个
@@ -200,6 +206,8 @@ W5 理论部分收口：**`V*` 的存在、唯一、最优策略的形状、收�
 & $PY scripts\probe_sa_sgd.py --only C    # 只跑"抖动地板"（手算 vs 实测）
 & $PY scripts\probe_mc.py             # 第 5 章五个实验：误差 1/√N / 首次vs每次 / MC Basic 回退 / 样本账单 / ε 代价
 & $PY scripts\probe_mc.py --only C    # 只跑"MC Basic 的改进在样本少时会回退"
+& $PY scripts\probe_film.py           # 支线五个实验：参数量对账 / 逐通道广播 / identity 初始化 / 梯度 / 四种注入方式
+& $PY scripts\probe_film.py --only C  # 只跑 identity 初始化（含 eval 模式基准坑）
 ```
 
 ```powershell
